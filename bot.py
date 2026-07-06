@@ -94,7 +94,7 @@ BOT_OWNER_ID = 1406336844882383049
 DATA_FILE = "data.json"
 AUCTION_FILE = "auctions.json"
 
-ROLL_ANIMATION_DELAY = 1.5
+ROLL_ANIMATION_DELAY = 1.7
 MAX_SPINS = 50
 KEY_DROP_CHANCE = 0.08
 KEY_DROP_MIN = 1
@@ -1261,6 +1261,7 @@ async def on_ready():
 # op signup
 # -----------------------------------------------------------------------
 @bot.command(name="signup")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def signup(ctx: commands.Context):
     """Sign up to start playing!"""
     data = load_data()
@@ -1297,6 +1298,7 @@ async def signup(ctx: commands.Context):
 # op invite
 # -----------------------------------------------------------------------
 @bot.command(name="invite")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def invite(ctx: commands.Context):
     embed = discord.Embed(
         title="\U0001f4ec Invite OP Bot",
@@ -1483,6 +1485,7 @@ class RedeemView(discord.ui.View):
         await interaction.response.send_modal(RedeemModal())
 
 @bot.command(name="redeem")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def redeem(ctx: commands.Context, code: str = None):
     if code:
         modal = RedeemModal()
@@ -1505,6 +1508,7 @@ async def redeem(ctx: commands.Context, code: str = None):
 # op codes — view available promo codes
 # -----------------------------------------------------------------------
 @bot.command(name="codes")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def codes_cmd(ctx: commands.Context):
     """View all available promo codes."""
     data = load_data()
@@ -1572,6 +1576,7 @@ async def save_cmd(ctx: commands.Context):
 # op status — check bot status
 # -----------------------------------------------------------------------
 @bot.command(name="status")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def status_cmd(ctx: commands.Context):
     """Check bot status and database connection."""
     pg_status_text = "\u274c Not configured" if not DATABASE_URL else "\u274c psycopg2 not installed" if not HAS_PG else "\u274c Connection failed"
@@ -1629,6 +1634,7 @@ async def fixdb_cmd(ctx: commands.Context):
 # op odds — show pull rates
 # -----------------------------------------------------------------------
 @bot.command(name="odds")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def odds_cmd(ctx: commands.Context):
     """View pull rates and chances."""
     embed = discord.Embed(
@@ -1667,6 +1673,7 @@ async def odds_cmd(ctx: commands.Context):
 # op help
 # -----------------------------------------------------------------------
 @bot.command(name="help")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def help_command(ctx: commands.Context):
     embed = discord.Embed(
         title="\U0001f3f4\u200d\u2620\ufe0f OP Bot \u2014 Pirate's Handbook",
@@ -2045,6 +2052,7 @@ async def inventory(ctx: commands.Context):
 # op card — view a specific instance's full card
 # -----------------------------------------------------------------------
 @bot.command(name="card")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def card(ctx: commands.Context, *, query: str = None):
     if not query:
         await ctx.send("\u26a0\ufe0f Usage: `op card <character name or #id>`")
@@ -2373,6 +2381,7 @@ async def duel_error(ctx: commands.Context, error: commands.CommandError):
 # op team / op team+ / op team-
 # -----------------------------------------------------------------------
 @bot.command(name="team")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def team_view(ctx: commands.Context):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
@@ -2417,6 +2426,7 @@ async def team_view(ctx: commands.Context):
     await ctx.send(embed=embed)
 
 @bot.command(name="team+")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def team_add(ctx: commands.Context, *, character_name: str = None):
     if not character_name:
         await ctx.send("\u26a0\ufe0f Usage: `op team+ <character name>`")
@@ -2454,6 +2464,7 @@ async def team_add(ctx: commands.Context, *, character_name: str = None):
     ))
 
 @bot.command(name="team-")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def team_remove(ctx: commands.Context, *, character_name: str = None):
     if not character_name:
         await ctx.send("\u26a0\ufe0f Usage: `op team- <character name>`")
@@ -2551,6 +2562,7 @@ async def claim(ctx: commands.Context, quest_id: str = None):
 # op shop / op buy
 # -----------------------------------------------------------------------
 @bot.command(name="shop")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def shop(ctx: commands.Context):
     embed = branded_embed("\U0001f6cd\ufe0f OP Shop", "Buy with `op buy <item>`.", color=0x00BFA5)
     for key, item in SHOP_ITEMS.items():
@@ -2562,6 +2574,7 @@ async def shop(ctx: commands.Context):
     await ctx.send(embed=embed)
 
 @bot.command(name="buy")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def buy(ctx: commands.Context, item_key: str = None):
     if not item_key or item_key.lower() not in SHOP_ITEMS:
         await ctx.send("\u26a0\ufe0f Usage: `op buy <item>` \u2014 see items with `op shop`.")
@@ -2635,6 +2648,7 @@ async def buy(ctx: commands.Context, item_key: str = None):
 # op reroll — use a reroll token to randomize a card's race
 # -----------------------------------------------------------------------
 @bot.command(name="reroll")
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def reroll_card(ctx: commands.Context, *, card_id: str = None):
     if not card_id:
         await ctx.send("\u26a0\ufe0f Usage: `op reroll <#id>` \u2014 find card IDs with `op inv`.")
@@ -2910,11 +2924,13 @@ async def auction_watcher():
 # op leaderboard — global + server
 # -----------------------------------------------------------------------
 @bot.group(name="leaderboard", aliases=["lb"], invoke_without_command=True)
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def leaderboard_cmd(ctx: commands.Context):
     """Global leaderboard — top collectors by cards, power, berries, and spins."""
     await _show_leaderboard(ctx, server_only=False)
 
 @leaderboard_cmd.command(name="server", aliases=["guild", "local"])
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def leaderboard_server(ctx: commands.Context):
     """Server-only leaderboard."""
     await _show_leaderboard(ctx, server_only=True)
