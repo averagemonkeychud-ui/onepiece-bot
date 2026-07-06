@@ -8,6 +8,64 @@ from datetime import datetime, timedelta, time as dtime
 import discord
 from discord.ext import commands, tasks
 
+try:
+    import psycopg2
+    import psycopg2.extras
+    HAS_PG = True
+except ImportError:
+    HAS_PG = False
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+_PG_CONN = None
+
+def _pg_connect():
+    global _PG_CONN
+    if not DATABASE_URL or not HAS_PG:
+        return None
+    if _PG_CONN and _PG_CONN.closed == 0:
+        return _PG_CONN
+    try:
+        _PG_CONN = psycopg2.connect(DATABASE_URL, connect_timeout=5)
+        _PG_CONN.autocommit = True
+        cur = _PG_CONN.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS bot_data (
+                key TEXT PRIMARY KEY,
+                value JSONB NOT NULL
+            )
+        """)
+        cur.close()
+        return _PG_CONN
+    except Exception:
+        return None
+
+def _load_pg(key: str) -> dict:
+    conn = _pg_connect()
+    if not conn:
+        return None
+    try:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute("SELECT value FROM bot_data WHERE key = %s", (key,))
+        row = cur.fetchone()
+        cur.close()
+        return row["value"] if row else {}
+    except Exception:
+        return None
+
+def _save_pg(key: str, data: dict) -> None:
+    conn = _pg_connect()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO bot_data (key, value) VALUES (%s, %s::jsonb) ON CONFLICT (key) DO UPDATE SET value = %s::jsonb",
+            (key, json.dumps(data), json.dumps(data))
+        )
+        cur.close()
+    except Exception:
+        pass
+
 # =============================================================================
 # CONFIG
 # =============================================================================
@@ -329,6 +387,11 @@ STAT_BANDS = {
 # STORAGE
 # =============================================================================
 def _load(path: str) -> dict:
+    pg_key = os.path.basename(path).replace(".json", "")
+    if DATABASE_URL and HAS_PG:
+        result = _load_pg(pg_key)
+        if result is not None:
+            return result
     try:
         if not os.path.exists(path):
             return {}
@@ -341,6 +404,10 @@ def _load(path: str) -> dict:
         return {}
 
 def _save(path: str, data: dict) -> None:
+    pg_key = os.path.basename(path).replace(".json", "")
+    if DATABASE_URL and HAS_PG:
+        _save_pg(pg_key, data)
+        return
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
