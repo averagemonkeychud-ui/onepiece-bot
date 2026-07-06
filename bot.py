@@ -1785,6 +1785,41 @@ async def fixdb_cmd(ctx: commands.Context):
         await ctx.send("\u274c Still can't connect. Check Railway logs for the error message.")
 
 # -----------------------------------------------------------------------
+# op resetuser — owner-only: wipe a player's data back to defaults
+# -----------------------------------------------------------------------
+@bot.command(name="resetuser")
+async def resetuser_cmd(ctx: commands.Context, *, target: str = None):
+    """Reset a player's data (collection, team, progress) as if they just signed up."""
+    owner = BOT_OWNER_ID or (bot.owner_id if hasattr(bot, "owner_id") and bot.owner_id else None)
+    if not owner or ctx.author.id != owner:
+        await ctx.send("\u26a0\ufe0f Only the bot owner can use this command.")
+        return
+    if not target:
+        await ctx.send("\u26a0\ufe0f Usage: `op resetuser @mention` or `op resetuser 123456789`")
+        return
+    uid = None
+    if target.startswith("<@") and target.endswith(">"):
+        uid = target.strip("<@!>")
+    else:
+        uid = target.strip()
+    if not uid.isdigit():
+        await ctx.send("\u26a0\ufe0f Provide a valid user mention or numeric user ID.")
+        return
+    data = load_data()
+    if uid not in data:
+        await ctx.send(f"\u26a0\ufe0f No player found with ID `{uid}`.")
+        return
+    fresh = default_user()
+    fresh["signed_up"] = True
+    data[uid] = fresh
+    save_data(data)
+    await ctx.send(embed=branded_embed(
+        "\U0001f504 Player Reset",
+        f"Player `<@{uid}>` has been reset to a fresh state.\nTheir collection, team, spins, berries, and progress have all been wiped.",
+        color=0xFF9800,
+    ))
+
+# -----------------------------------------------------------------------
 # op odds — show pull rates
 # -----------------------------------------------------------------------
 @bot.command(name="odds")
