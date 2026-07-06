@@ -1358,13 +1358,43 @@ class PromoCreateView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.owner_id:
-            await interaction.response.send_message("Only the bot owner can create codes.", ephemeral=True)
+            await interaction.response.send_message("Only the bot owner can use this.", ephemeral=True)
             return False
         return True
 
     @discord.ui.button(label="Create Promo Code", style=discord.ButtonStyle.success, emoji="\U0001f3b5")
     async def create_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(PromoModal())
+
+    @discord.ui.button(label="Delete Code", style=discord.ButtonStyle.danger, emoji="\u274c")
+    async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = load_data()
+        promos = data.get("_promo_codes", {})
+        redeemed = set(data.get("_redeemed_codes", []))
+        available = {k: v for k, v in promos.items() if k not in redeemed}
+        if not available:
+            await interaction.response.send_message("No promo codes available to delete.", ephemeral=True)
+            return
+        options = []
+        for k, v in available.items():
+            rt = REWARD_TYPES.get(v.get("type", "spins"))
+            label = f"{k} \u2014 {v.get('amount', 0)} {rt['label'] if rt else ''}"
+            options.append(discord.SelectOption(label=label[:100], value=k))
+        select = discord.ui.Select(placeholder="Pick a code to delete...", options=options[:25])
+        async def del_callback(sel_interaction: discord.Interaction):
+            if sel_interaction.user.id != self.owner_id:
+                await sel_interaction.response.send_message("Not your panel.", ephemeral=True)
+                return
+            code = select.values[0]
+            data = load_data()
+            if code in data.get("_promo_codes", {}):
+                del data["_promo_codes"][code]
+                save_data(data)
+            await sel_interaction.response.send_message(f"\u2705 Deleted promo code **{code}**.", ephemeral=True)
+        select.callback = del_callback
+        view = discord.ui.View(timeout=60)
+        view.add_item(select)
+        await interaction.response.send_message("Select a promo code to delete:", view=view, ephemeral=True)
 
 @bot.command(name="promocode")
 async def promocode_cmd(ctx: commands.Context):
@@ -1705,17 +1735,18 @@ async def help_command(ctx: commands.Context):
         ),
         inline=True,
     )
-    embed.add_field(
-        name="\U0001f511 Owner",
-        value=(
-            "`op promocode` \u2014 create promo codes\n"
-            "`op restart` \u2014 restart the bot\n"
-            "`op save` \u2014 force save data\n"
-            "`op status` \u2014 check DB status\n"
-            "`op fixdb` \u2014 reconnect to PostgreSQL"
-        ),
-        inline=True,
-    )
+    if ctx.author.id == BOT_OWNER_ID:
+        embed.add_field(
+            name="\U0001f511 Owner",
+            value=(
+                "`op promocode` \u2014 create/delete codes\n"
+                "`op restart` \u2014 restart the bot\n"
+                "`op save` \u2014 force save data\n"
+                "`op status` \u2014 check DB status\n"
+                "`op fixdb` \u2014 reconnect to PostgreSQL"
+            ),
+            inline=True,
+        )
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
