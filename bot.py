@@ -3,6 +3,7 @@ import itertools
 import json
 import os
 import random
+import time
 import traceback
 from datetime import datetime, timedelta, time as dtime
 
@@ -118,6 +119,13 @@ SHOP_LUCK_MULTIPLIER = 2
 SHOP_KEY_COST = 1_000_000
 SHOP_REFILL_COST = 500_000
 SHOP_TEAMSLOT_COST = 5_000_000
+SHOP_FASTSPINS_COST = 1_000_000
+SHOP_FASTSPINS_COUNT = 10
+SHOP_AUTOROLL_COST = 1_500_000
+SHOP_AUTOROLL_MINUTES = 10
+SHOP_AUTOROLL_MAX = 30
+SHOP_AUTOROLL_BREAK = 40
+SPIN_CONSUME_AUTOROLL = 8
 
 # =============================================================================
 # RACES (randomized per pull, small stat modifiers)
@@ -355,9 +363,6 @@ QUESTS_PER_DAY = 3
 
 RARITY_ORDER = list(RARITIES.keys())
 
-SHOP_REROLL_COST = 800_000
-SHOP_FRUIT_TICKET_COST = 1_500_000
-
 SHOP_ITEMS = {
     "luck": {
         "label": f"2x Luck ({SHOP_LUCK_MINUTES} min)",
@@ -379,15 +384,15 @@ SHOP_ITEMS = {
         "desc": f"Permanently +1 duel team slot (max {MAX_TEAM_SIZE_CAP}).",
         "cost": SHOP_TEAMSLOT_COST,
     },
-    "reroll": {
-        "label": "Race Re-roll",
-        "desc": "Re-roll the race on a card of your choice. Use `op buy reroll` then `op card <name>` to apply.",
-        "cost": SHOP_REROLL_COST,
+    "fastspins": {
+        "label": f"Fast Spins ({SHOP_FASTSPINS_COUNT})",
+        "desc": f"Your next {SHOP_FASTSPINS_COUNT} spins skip the roll animation — instant pulls!",
+        "cost": SHOP_FASTSPINS_COST,
     },
-    "fruiticket": {
-        "label": "Rare Fruit Ticket",
-        "desc": "Your next pull is guaranteed to get a Rare-quality fruit or better.",
-        "cost": SHOP_FRUIT_TICKET_COST,
+    "autoroll": {
+        "label": f"Auto Roll ({SHOP_AUTOROLL_MINUTES} min)",
+        "desc": f"Spins auto-roll for {SHOP_AUTOROLL_MINUTES} minutes (no animation, no cooldown). Max {SHOP_AUTOROLL_MAX} min then {SHOP_AUTOROLL_BREAK} min break.",
+        "cost": SHOP_AUTOROLL_COST,
     },
 }
 
@@ -470,6 +475,9 @@ def default_user() -> dict:
         "spins_used": 0,
         "reroll_tokens": 0,
         "fruit_ticket": False,
+        "fast_spins": 0,
+        "autoroll_remaining": 0,
+        "autoroll_break_until": 0,
         "luck_date": "",
         "luck_seconds_today": 0,
         "_next_inst_id": 1,
@@ -1207,6 +1215,9 @@ def repair_user_data(user: dict) -> None:
         user["_next_inst_id"] = next_id
     valid_ids = {i["inst_id"] for i in fixed if i.get("inst_id") is not None}
     user["team"] = [tid for tid in user.get("team", []) if tid in valid_ids]
+    user["fast_spins"] = max(0, user.get("fast_spins", 0))
+    user["autoroll_remaining"] = max(0, user.get("autoroll_remaining", 0))
+    user["autoroll_break_until"] = float(user.get("autoroll_break_until", 0))
 
 def _sanitize_user(user: dict) -> None:
     """Guard against data corruption — clamp all balances, prune invalid refs."""
@@ -1217,6 +1228,9 @@ def _sanitize_user(user: dict) -> None:
     user["pity_counter"] = max(0, user.get("pity_counter", 0))
     user["spins_used"] = max(0, user.get("spins_used", 0))
     user["reroll_tokens"] = max(0, user.get("reroll_tokens", 0))
+    user["fast_spins"] = max(0, user.get("fast_spins", 0))
+    user["autoroll_remaining"] = max(0, user.get("autoroll_remaining", 0))
+    user["autoroll_break_until"] = max(0, float(user.get("autoroll_break_until", 0)))
     user["team_slots"] = max(1, min(MAX_TEAM_SIZE_CAP, user.get("team_slots", DEFAULT_TEAM_SIZE)))
     user["luck_seconds_today"] = max(0, min(7200, user.get("luck_seconds_today", 0)))
     nid = user.get("_next_inst_id", 1)
@@ -1777,7 +1791,7 @@ async def help_command(ctx: commands.Context):
         value=(
             "`op shop` \u2014 tap buttons to buy\n"
             "`op buy <item>` \u2014 text alternative\n"
-            "`op reroll <#id>` \u2014 apply reroll token"
+            "`op inv` \u2014 check your items (fast spins, auto roll)"
         ),
         inline=True,
     )
@@ -1796,7 +1810,6 @@ async def help_command(ctx: commands.Context):
         value=(
             "`op shop` \u2014 browse items\n"
             "`op buy <item>` \u2014 purchase items\n"
-            "`op reroll <#id>` \u2014 re-roll a card's race\n"
             "`op leaderboard` \u2014 global rankings"
         ),
         inline=True,
@@ -1856,6 +1869,9 @@ async def help_command(ctx: commands.Context):
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
+# in-memory spam tracker: user_id -> [timestamp, ...]
+_spam_tracker: dict = {}
+
 # -----------------------------------------------------------------------
 # op spin
 # -----------------------------------------------------------------------
@@ -1888,9 +1904,25 @@ class DuplicateChoiceView(discord.ui.View):
             self.choice = "convert"
 
 @bot.command(name="spin", aliases=["roll"])
-@commands.cooldown(1, 3, commands.BucketType.user)
 async def spin(ctx: commands.Context):
     """Spin for a random One Piece character. Costs 1 spin."""
+    now_ts = datetime.utcnow().timestamp()
+    now = time.time()
+
+    # anti-spam: block if >4 spins in 30s window
+    spam = _spam_tracker.get(ctx.author.id, [])
+    spam = [t for t in spam if now - t < 30]
+    if len(spam) >= 4:
+        _spam_tracker[ctx.author.id] = spam
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Spam Detected",
+            f"{ctx.author.mention}, you're spinning too fast! Please wait **20 seconds**.",
+            color=0xFF9800,
+        ))
+        return
+    spam.append(now)
+    _spam_tracker[ctx.author.id] = spam
+
     data = load_data()
     user = get_user(data, str(ctx.author.id))
 
@@ -1903,8 +1935,27 @@ async def spin(ctx: commands.Context):
         ))
         return
 
-    suspense = await ctx.send("\U0001f3b2 Spinning...")
-    await asyncio.sleep(ROLL_ANIMATION_DELAY)
+    # check autoroll — skip animation, consume timer & bypass spam
+    fast = user.get("fast_spins", 0)
+    auto = user.get("autoroll_remaining", 0)
+    break_until = user.get("autoroll_break_until", 0)
+    autoroll_active = auto > 0 and break_until < now_ts
+
+    if autoroll_active:
+        consume = SPIN_CONSUME_AUTOROLL
+        auto_after = max(0, auto - consume)
+        user["autoroll_remaining"] = auto_after
+        if auto_after <= 0:
+            user["autoroll_break_until"] = now_ts + SHOP_AUTOROLL_BREAK * 60
+        suspense = await ctx.send("\U0001f3b2 Auto-rolling...")
+        await asyncio.sleep(0.3)
+    elif fast > 0:
+        user["fast_spins"] = fast - 1
+        suspense = await ctx.send("\U0001f3b2 Fast spin...")
+        await asyncio.sleep(0.3)
+    else:
+        suspense = await ctx.send("\U0001f3b2 Spinning...")
+        await asyncio.sleep(ROLL_ANIMATION_DELAY)
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
@@ -2003,13 +2054,6 @@ async def spin(ctx: commands.Context):
 
     save_data(data)
     await suspense.edit(embed=dup_embed, view=None)
-
-@spin.error
-async def spin_error(ctx: commands.Context, error: commands.CommandError):
-    if isinstance(error, commands.CommandOnCooldown):
-        await ctx.send(f"\u23f3 Slow down! Try again in {error.retry_after:.1f}s.")
-    else:
-        raise error
 
 # -----------------------------------------------------------------------
 # op refreshspins
@@ -2134,6 +2178,15 @@ async def inventory(ctx: commands.Context):
         embed.add_field(name="\U0001f4b0 Berries", value=f"{user.get('berries', 0):,}", inline=True)
         embed.add_field(name="\U0001f3af Spins", value=f"{user.get('spins', 0)}/{MAX_SPINS}", inline=True)
         embed.add_field(name="\U0001f511 Keys", value=str(user.get("keys", 0)), inline=True)
+        embed.add_field(name="\u26a1 Fast Spins", value=str(user.get("fast_spins", 0)), inline=True)
+        auto = user.get("autoroll_remaining", 0)
+        break_ts = user.get("autoroll_break_until", 0)
+        auto_str = f"{auto // 60}m" if auto else "0"
+        break_str = ""
+        if break_ts > datetime.utcnow().timestamp():
+            left = int((break_ts - datetime.utcnow().timestamp()) // 60)
+            break_str = f" (break {left}m)"
+        embed.add_field(name="\U0001f504 Auto Roll", value=auto_str + break_str, inline=True)
         embed.add_field(name="\u26a1 Pity", value=f"{user.get('pity_counter', 0)}/{PITY_THRESHOLD}", inline=True)
         await ctx.send(embed=embed)
     except Exception as e:
@@ -2680,8 +2733,8 @@ SHOP_EMOJIS = {
     "key": "\U0001f511",
     "refill": "\U0001f504",
     "teamslot": "\u2795",
-    "reroll": "\U0001f3b2",
-    "fruiticket": "\U0001f34e",
+    "fastspins": "\u26a1",
+    "autoroll": "\U0001f504",
 }
 
 def _build_shop_embed(user: dict = None) -> discord.Embed:
@@ -2709,10 +2762,12 @@ class ShopView(discord.ui.View):
             emoji = SHOP_EMOJIS.get(key, "\u2705")
             if key in ("luck", "key", "refill"):
                 style = discord.ButtonStyle.primary
-            elif key in ("teamslot", "reroll"):
+            elif key == "teamslot":
                 style = discord.ButtonStyle.secondary
-            else:
+            elif key == "autoroll":
                 style = discord.ButtonStyle.success
+            else:
+                style = discord.ButtonStyle.primary
             btn = discord.ui.Button(label=f"{item['label']}  \u2014  {item['cost']:,}", style=style, emoji=emoji, row=idx // 3)
             async def callback(interaction: discord.Interaction, _key=key, _item=item):
                 if interaction.user.id != self.user_id:
@@ -2774,12 +2829,23 @@ async def _process_shop_buy(interaction: discord.Interaction, item_key: str, ite
     elif item_key == "teamslot":
         user["team_slots"] += 1
         result = f"Team size is now **{user['team_slots']}**."
-    elif item_key == "reroll":
-        user["reroll_tokens"] = user.get("reroll_tokens", 0) + 1
-        result = f"You now have **{user['reroll_tokens']}** Race Re-roll token(s)."
-    elif item_key == "fruiticket":
-        user["fruit_ticket"] = True
-        result = "Your next pull will guarantee a Rare fruit or better!"
+    elif item_key == "fastspins":
+        user["fast_spins"] = user.get("fast_spins", 0) + SHOP_FASTSPINS_COUNT
+        result = f"You now have **{user['fast_spins']}** fast spin(s) queued."
+    elif item_key == "autoroll":
+        now_ts = datetime.utcnow().timestamp()
+        break_until = user.get("autoroll_break_until", 0)
+        if break_until > now_ts:
+            mins_left = int((break_until - now_ts) // 60)
+            await interaction.response.send_message(
+                f"\u26a0\ufe0f Auto Roll is on break for another **{mins_left} minutes**. Wait before buying more.",
+                ephemeral=True)
+            return
+        remaining = user.get("autoroll_remaining", 0)
+        added = SHOP_AUTOROLL_MINUTES * 60
+        new_total = min(remaining + added, SHOP_AUTOROLL_MAX * 60)
+        user["autoroll_remaining"] = new_total
+        result = f"Auto Roll extended! You have **{new_total // 60} min** stored (max {SHOP_AUTOROLL_MAX} min)."
 
     save_data(data)
     await interaction.response.send_message(embed=branded_embed(
@@ -2855,12 +2921,21 @@ async def buy(ctx: commands.Context, item_key: str = None):
     elif item_key == "teamslot":
         user["team_slots"] += 1
         result = f"Team size is now **{user['team_slots']}**."
-    elif item_key == "reroll":
-        user["reroll_tokens"] = user.get("reroll_tokens", 0) + 1
-        result = f"You now have **{user['reroll_tokens']}** Race Re-roll token(s). Use `op reroll <#id>` to apply."
-    elif item_key == "fruiticket":
-        user["fruit_ticket"] = True
-        result = "Your next pull will guarantee a Rare fruit or better!"
+    elif item_key == "fastspins":
+        user["fast_spins"] = user.get("fast_spins", 0) + SHOP_FASTSPINS_COUNT
+        result = f"You now have **{user['fast_spins']}** fast spin(s) queued."
+    elif item_key == "autoroll":
+        now_ts = datetime.utcnow().timestamp()
+        break_until = user.get("autoroll_break_until", 0)
+        if break_until > now_ts:
+            mins_left = int((break_until - now_ts) // 60)
+            await ctx.send(f"\u26a0\ufe0f Auto Roll is on break for another **{mins_left} minutes**. Wait before buying more.")
+            return
+        remaining = user.get("autoroll_remaining", 0)
+        added = SHOP_AUTOROLL_MINUTES * 60
+        new_total = min(remaining + added, SHOP_AUTOROLL_MAX * 60)
+        user["autoroll_remaining"] = new_total
+        result = f"Auto Roll extended! You have **{new_total // 60} min** stored (max {SHOP_AUTOROLL_MAX} min)."
 
     save_data(data)
     await ctx.send(embed=branded_embed(
@@ -2889,7 +2964,7 @@ async def reroll_card(ctx: commands.Context, *, card_id: str = None):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
     if user.get("reroll_tokens", 0) <= 0:
-        await ctx.send("\u26a0\ufe0f You don't have any Race Re-roll tokens! Buy one with `op buy reroll`.")
+        await ctx.send("\u26a0\ufe0f You don't have any Race Re-roll tokens! These were available in a previous shop version.")
         return
     target = None
     for inst in user["collection"]:
