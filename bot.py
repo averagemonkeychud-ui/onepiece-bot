@@ -93,6 +93,14 @@ PITY_THRESHOLD = 200
 BRAND_COLOR = 0xD32F2F
 FOOTER_TEXT = "OP Bot • One Piece Collector"
 
+PROMO_CODES = {
+    "heresyourshanks": {
+        "character": "Shanks",
+        "rarity": "S",
+        "message": "Here's your Shanks back, pirate! 🏴‍☠️",
+    },
+}
+
 SHOP_LUCK_COST = 2_000_000
 SHOP_LUCK_MINUTES = 10
 SHOP_LUCK_MULTIPLIER = 2
@@ -451,6 +459,7 @@ def default_user() -> dict:
         "fruit_ticket": False,
         "luck_date": "",
         "luck_seconds_today": 0,
+        "redeemed_codes": [],
         "_next_inst_id": 1,
     }
 
@@ -1044,6 +1053,40 @@ async def invite(ctx: commands.Context):
         color=BRAND_COLOR,
     )
     embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed)
+
+# -----------------------------------------------------------------------
+# op redeem — promo codes
+# -----------------------------------------------------------------------
+@bot.command(name="redeem")
+async def redeem(ctx: commands.Context, code: str = None):
+    if not code:
+        await ctx.send("\u26a0\ufe0f Usage: `op redeem <code>`")
+        return
+    code = code.lower().strip()
+    if code not in PROMO_CODES:
+        await ctx.send("\u26a0\ufe0f Invalid promo code.")
+        return
+    data = load_data()
+    user = get_user(data, str(ctx.author.id))
+    redeemed = user.get("redeemed_codes", [])
+    if code in redeemed:
+        await ctx.send("\u26a0\ufe0f You've already redeemed this code!")
+        return
+    info = PROMO_CODES[code]
+    char = character_lookup(info["character"])
+    if not char:
+        await ctx.send("\u26a0\ufe0f That character doesn't exist in the database.")
+        return
+    inst = create_instance(char)
+    inst["inst_id"] = user["_next_inst_id"]
+    user["_next_inst_id"] += 1
+    user["collection"].append(inst)
+    redeemed.append(code)
+    user["redeemed_codes"] = redeemed
+    save_data(data)
+    embed = build_card_embed(inst, ctx)
+    embed.description = f"**{info['message']}**\n\n{embed.description}"
     await ctx.send(embed=embed)
 
 # -----------------------------------------------------------------------
