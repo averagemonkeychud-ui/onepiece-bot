@@ -1112,30 +1112,42 @@ async def invite(ctx: commands.Context):
 # -----------------------------------------------------------------------
 # op promocode — owner-only GUI to create promo codes
 # -----------------------------------------------------------------------
+REWARD_TYPES = {
+    "spins": {"label": "Spins", "emoji": "\U0001f3b2", "field": "spins", "default": 10},
+    "berries": {"label": "Beli", "emoji": "\U0001f4b0", "field": "berries", "default": 50000},
+    "keys": {"label": "Keys", "emoji": "\U0001f511", "field": "keys", "default": 3},
+}
+
 class PromoModal(discord.ui.Modal, title="Create Promo Code"):
-    code_name = discord.ui.TextInput(label="Code", placeholder="e.g. summer2026", max_length=30)
-    spins = discord.ui.TextInput(label="Spins reward", placeholder="e.g. 10", max_length=5)
+    code_name = discord.ui.TextInput(label="Code Name", placeholder="e.g. summer2026", max_length=30)
+    reward_type = discord.ui.TextInput(label="Reward (spins / berries / keys)", placeholder="spins", max_length=10, required=False)
+    reward_amount = discord.ui.TextInput(label="Amount", placeholder="e.g. 10", max_length=7)
 
     async def on_submit(self, interaction: discord.Interaction):
         name = self.code_name.value.lower().strip()
         if not name:
             await interaction.response.send_message("\u26a0\ufe0f Code can't be empty.", ephemeral=True)
             return
+        rtype = self.reward_type.value.strip().lower() or "spins"
+        if rtype not in REWARD_TYPES:
+            await interaction.response.send_message(f"\u26a0\ufe0f Invalid reward type. Choose: {', '.join(REWARD_TYPES.keys())}", ephemeral=True)
+            return
         try:
-            spin_val = int(self.spins.value.strip())
-            if spin_val < 1 or spin_val > 99999:
+            amount = int(self.reward_amount.value.strip())
+            if amount < 1 or amount > 999999:
                 raise ValueError
         except ValueError:
-            await interaction.response.send_message("\u26a0\ufe0f Spins must be a number between 1-99999.", ephemeral=True)
+            await interaction.response.send_message("\u26a0\ufe0f Amount must be a number between 1-999999.", ephemeral=True)
             return
         data = load_data()
         promos = data.setdefault("_promo_codes", {})
-        promos[name] = {"spins": spin_val}
+        promos[name] = {"type": rtype, "amount": amount}
         data["_promo_codes"] = promos
         save_data(data)
+        rt = REWARD_TYPES[rtype]
         await interaction.response.send_message(embed=branded_embed(
             "\u2705 Promo Code Created",
-            f"**{name}** — {spin_val} spins\nUse `op redeem {name}` to claim.",
+            f"**{name}** \u2014 {rt['emoji']} **{amount:,}** {rt['label']}\nTap the **\U0001f3b5 Redeem** button to claim it!",
             color=0x4CAF50,
         ))
 
@@ -1162,39 +1174,83 @@ async def promocode_cmd(ctx: commands.Context):
         return
     data = load_data()
     promos = data.get("_promo_codes", {})
-    desc = "\n".join([f"`{k}` — {v['spins']} spins" for k, v in promos.items()]) if promos else "No promo codes yet."
+    lines = []
+    for k, v in promos.items():
+        rt = REWARD_TYPES.get(v.get("type", "spins"))
+        emoji = rt["emoji"] if rt else "\U0001f3b5"
+        label = rt["label"] if rt else v.get("type", "?")
+        lines.append(f"`{k}` \u2014 {emoji} **{v.get('amount', 0):,}** {label}")
+    desc = "\n".join(lines) if lines else "No promo codes yet."
     embed = branded_embed("\U0001f3b5 Promo Codes", desc, color=0x9C27B0)
     await ctx.send(embed=embed, view=PromoCreateView(ctx.author.id))
 
 # -----------------------------------------------------------------------
-# op redeem — claim a promo code
+# op redeem — claim a promo code (button + modal)
 # -----------------------------------------------------------------------
+class RedeemModal(discord.ui.Modal, title="Redeem Promo Code"):
+    code_input = discord.ui.TextInput(label="Enter your code", placeholder="e.g. summer2026", max_length=30)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        code = self.code_input.value.lower().strip()
+        data = load_data()
+        promos = data.get("_promo_codes", {})
+        if code not in promos:
+            await interaction.response.send_message("\u26a0\ufe0f Invalid promo code.", ephemeral=True)
+            return
+        user = get_user(data, str(interaction.user.id))
+        global_redeemed = data.setdefault("_redeemed_codes", [])
+        if code in global_redeemed:
+            await interaction.response.send_message("\u26a0\ufe0f This code has already been claimed!", ephemeral=True)
+            return
+        info = promos[code]
+        rtype = info.get("type", "spins")
+        amount = info.get("amount", 0)
+        if rtype == "spins":
+            user["spins"] = min(MAX_SPINS, user["spins"] + amount)
+        elif rtype == "berries":
+            user["berries"] += amount
+        elif rtype == "keys":
+            user["keys"] += amount
+        else:
+            user["spins"] = min(MAX_SPINS, user["spins"] + amount)
+        global_redeemed.append(code)
+        data["_redeemed_codes"] = global_redeemed
+        save_data(data)
+        rt = REWARD_TYPES.get(rtype)
+        emoji = rt["emoji"] if rt else "\U0001f3b5"
+        label = rt["label"] if rt else rtype
+        await interaction.response.send_message(embed=branded_embed(
+            "\U0001f3b5 Code Redeemed!",
+            f"{emoji} **+{amount:,}** {label} added!",
+            color=0x4CAF50,
+        ))
+
+class RedeemView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="Redeem Code", style=discord.ButtonStyle.primary, emoji="\U0001f3b5")
+    async def redeem_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(RedeemModal())
+
 @bot.command(name="redeem")
 async def redeem(ctx: commands.Context, code: str = None):
-    if not code:
-        await ctx.send("\u26a0\ufe0f Usage: `op redeem <code>`")
+    if code:
+        modal = RedeemModal()
+        modal.code_input.default = code
+        await ctx.send(embed=branded_embed(
+            "\U0001f3b5 Redeem Code",
+            "Enter your code in the popup!",
+            color=0x9C27B0,
+        ), view=RedeemView())
         return
-    code = code.lower().strip()
-    data = load_data()
-    promos = data.get("_promo_codes", {})
-    if code not in promos:
-        await ctx.send("\u26a0\ufe0f Invalid promo code.")
-        return
-    user = get_user(data, str(ctx.author.id))
-    global_redeemed = data.setdefault("_redeemed_codes", [])
-    if code in global_redeemed:
-        await ctx.send("\u26a0\ufe0f This code has already been claimed!")
-        return
-    info = promos[code]
-    user["spins"] = min(MAX_SPINS, user["spins"] + info["spins"])
-    global_redeemed.append(code)
-    data["_redeemed_codes"] = global_redeemed
-    save_data(data)
-    await ctx.send(embed=branded_embed(
-        "\U0001f3b5 Code Redeemed!",
-        f"**+{info['spins']} spins** added! You now have **{user['spins']}/{MAX_SPINS}** spins.",
-        color=0x4CAF50,
-    ))
+    embed = discord.Embed(
+        title="\U0001f3b5 Redeem a Code",
+        description="Tap the button below and type in your promo code!",
+        color=0xFFD700,
+    )
+    embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed, view=RedeemView())
 
 # -----------------------------------------------------------------------
 # op restart — owner-only, kills process (process manager auto-restarts)
@@ -1323,7 +1379,7 @@ async def help_command(ctx: commands.Context):
         name="\U0001f4ec Invite & Info",
         value=(
             "`op invite` \u2014 add bot to server\n"
-            "`op redeem <code>` \u2014 use promo code\n"
+            "`op redeem` \u2014 redeem a promo code\n"
             "`op signup` \u2014 this menu\n"
             "\u200b"
         ),
