@@ -25,6 +25,8 @@ def _pg_connect():
         return None
     if _PG_CONN and _PG_CONN.closed == 0:
         return _PG_CONN
+    masked_url = DATABASE_URL[:DATABASE_URL.rfind("@")+1] + "***" if "@" in DATABASE_URL else "no @ found"
+    print(f"[PG] Attempting connection to: {masked_url}")
     try:
         _PG_CONN = psycopg2.connect(DATABASE_URL, connect_timeout=5)
         _PG_CONN.autocommit = True
@@ -40,6 +42,8 @@ def _pg_connect():
         return _PG_CONN
     except Exception as e:
         print(f"[PG] Connection failed: {e}")
+        print(f"[PG] DATABASE_URL prefix: {masked_url}")
+        _PG_CONN = None
         return None
 
 def _load_pg(key: str) -> dict:
@@ -1026,14 +1030,14 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
     if not user or not user.get("signed_up"):
         embed = discord.Embed(
             title="\u26a0\ufe0f Not Signed Up",
-            description="You need to sign up before using commands!\n\nTap the button below to start your adventure \u2014 free spins & Beli await.",
+            description="You need to sign up before using commands!\n\nTap the button below or type **`op signup`** to start your adventure \u2014 free spins & Beli await.",
             color=0xFF5722,
         )
         embed.set_footer(text=FOOTER_TEXT)
@@ -1080,7 +1084,7 @@ async def signup(ctx: commands.Context):
             "Welcome to **OP Bot** \u2014 the ultimate One Piece gacha experience!\n\n"
             "Collect your favourite characters, unlock Devil Fruits, master rare races, "
             "and duel other players to become the Pirate King.\n\n"
-            "Tap the button below to get started!"
+            "Tap the button below or type **`op signup`** to get started!"
         ),
         color=0xFFD700,
     )
@@ -1292,16 +1296,92 @@ async def save_cmd(ctx: commands.Context):
 @bot.command(name="status")
 async def status_cmd(ctx: commands.Context):
     """Check bot status and database connection."""
-    pg_ok = DATABASE_URL and HAS_PG and _pg_connect()
-    pg_status = "\u2705 Connected" if pg_ok else "\u274c Disconnected"
-    storage = "PostgreSQL + File backup" if DATABASE_URL and HAS_PG else "File-based only (data resets on Railway!)"
+    pg_status_text = "\u274c Not configured" if not DATABASE_URL else "\u274c psycopg2 not installed" if not HAS_PG else "\u274c Connection failed"
+    pg_color = 0xFF5722
+    if DATABASE_URL and HAS_PG:
+        conn = _pg_connect()
+        if conn:
+            pg_status_text = "\u2705 Connected"
+            pg_color = 0x4CAF50
+        else:
+            pg_status_text = "\u274c Connection failed (check Railway PG service is linked)"
+    storage = "File-based only (data resets on Railway!)" if not (DATABASE_URL and HAS_PG and _pg_connect()) else "PostgreSQL + File backup"
+    total_users = len([k for k in load_data().keys() if not k.startswith('_')])
     embed = discord.Embed(
         title="\U0001f916 OP Bot Status",
+        color=pg_color if "❌" in pg_status_text else 0x4CAF50,
+    )
+    embed.add_field(name="\U0001f4e1 PostgreSQL", value=pg_status_text, inline=True)
+    embed.add_field(name="\U0001f4be Storage Mode", value=storage, inline=True)
+    embed.add_field(name="\U0001f4dd Total Users", value=str(total_users), inline=True)
+    if DATABASE_URL and HAS_PG and not _pg_connect():
+        masked = DATABASE_URL[:DATABASE_URL.rfind("@")+1] + "***" if "@" in DATABASE_URL else "unknown"
+        embed.add_field(name="\u26a0\ufe0f DB URL", value=f"`{masked}`", inline=False)
+    embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed)
+
+# -----------------------------------------------------------------------
+# op fixdb — force reconnect to PostgreSQL
+# -----------------------------------------------------------------------
+@bot.command(name="fixdb")
+async def fixdb_cmd(ctx: commands.Context):
+    """Force re-connect to PostgreSQL and migrate data."""
+    owner = BOT_OWNER_ID or (bot.owner_id if hasattr(bot, "owner_id") and bot.owner_id else None)
+    if not owner or ctx.author.id != owner:
+        await ctx.send("\u26a0\ufe0f Only the bot owner can use this command.")
+        return
+    global _PG_CONN
+    _PG_CONN = None
+    if not DATABASE_URL:
+        await ctx.send("\u274c `DATABASE_URL` is not set. Add PostgreSQL on Railway first.")
+        return
+    if not HAS_PG:
+        await ctx.send("\u274c `psycopg2` is not installed. Check `requirements.txt`.")
+        return
+    conn = _pg_connect()
+    if conn:
+        data = load_data()
+        _save_pg("data", data)
+        _save_pg("auctions", load_auctions())
+        await ctx.send("\u2705 PostgreSQL reconnected & data migrated! Run `op status` to confirm.")
+    else:
+        await ctx.send("\u274c Still can't connect. Check Railway logs for the error message.")
+
+# -----------------------------------------------------------------------
+# op odds — show pull rates
+# -----------------------------------------------------------------------
+@bot.command(name="odds")
+async def odds_cmd(ctx: commands.Context):
+    """View pull rates and chances."""
+    embed = discord.Embed(
+        title="\U0001f3b2 Pull Rates & Odds",
+        description="Every spin pulls a random character with a rarity. The rarer, the stronger!",
         color=0xFFD700,
     )
-    embed.add_field(name="\U0001f4e1 PostgreSQL", value=pg_status, inline=True)
-    embed.add_field(name="\U0001f4be Storage Mode", value=storage, inline=True)
-    embed.add_field(name="\U0001f4dd Total Users", value=f"{len([k for k in load_data().keys() if not k.startswith('_')])}", inline=True)
+    embed.add_field(
+        name="\U0001f3af Rarity Chances (1-in-X)",
+        value=(
+            "E  \u2014 1 in 2  (50%)\n"
+            "D  \u2014 1 in 4  (25%)\n"
+            "C  \u2014 1 in 10 (10%)\n"
+            "B  \u2014 1 in 25 (4%)\n"
+            "A  \u2014 1 in 100 (1%)\n"
+            "S  \u2014 1 in 500 (0.2%)\n"
+            "SS \u2014 1 in 2,000 (0.05%)\n"
+            "\U0001f451 HDYGT \u2014 1 in 1,000,000 (0.0001%)"
+        ),
+        inline=True,
+    )
+    embed.add_field(
+        name="\U0001f9ea Bonus Drops",
+        value=(
+            "\U0001f511 **Key** \u2014 8% chance per spin\n"
+            "\U0001f4b0 **Beli** \u2014 5% chance (up to 200k)\n"
+            "\U0001f4b0 **Duplicate** \u2014 sells for 50% of stat value\n"
+            "\nUse **2x Luck** from the shop to double odds!"
+        ),
+        inline=True,
+    )
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
@@ -1321,6 +1401,7 @@ async def help_command(ctx: commands.Context):
             "`op spin` \u2014 pull a random character\n"
             "`op spins` \u2014 check remaining spins\n"
             "`op daily` \u2014 claim daily bonus\n"
+            "`op odds` \u2014 view pull rates & chances\n"
             "`op refreshspins` \u2014 refill spins (1 Key)"
         ),
         inline=True,
@@ -1391,7 +1472,8 @@ async def help_command(ctx: commands.Context):
             "`op promocode` \u2014 create promo codes\n"
             "`op restart` \u2014 restart the bot\n"
             "`op save` \u2014 force save data\n"
-            "`op status` \u2014 check DB status"
+            "`op status` \u2014 check DB status\n"
+            "`op fixdb` \u2014 reconnect to PostgreSQL"
         ),
         inline=True,
     )
