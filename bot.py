@@ -622,12 +622,196 @@ def roll_key_drop() -> int:
         return random.randint(KEY_DROP_MIN, KEY_DROP_MAX)
     return 0
 
+NICKNAMES = {
+    "luffy": "Monkey D. Luffy",
+    "zoro": "Roronoa Zoro",
+    "sanji": "Vinsmoke Sanji",
+    "nami": "Nami",
+    "ussop": "Usopp",
+    "usopp": "Usopp",
+    "chopper": "Tony Tony Chopper",
+    "robin": "Nico Robin",
+    "franky": "Franky",
+    "brook": "Brook",
+    "jinbe": "Jinbe",
+    "jinbei": "Jinbe",
+    "law": "Trafalgar D. Water Law",
+    "trafalgar": "Trafalgar D. Water Law",
+    "ace": "Portgas D. Ace",
+    "sabo": "Sabo",
+    "katakuri": "Charlotte Katakuri",
+    "doffy": "Donquixote Doflamingo",
+    "doflamingo": "Donquixote Doflamingo",
+    "mihawk": "Dracule Mihawk",
+    "shanks": "Red-Haired Shanks",
+    "red hair": "Red-Haired Shanks",
+    "buggy": "Buggy the Clown",
+    "crocodile": "Sir Crocodile",
+    "kizaru": "Borsalino (Kizaru)",
+    "akainu": "Sakazuki (Akainu)",
+    "aokiji": "Kuzan (Aokiji)",
+    "fujitora": "Issho (Fujitora)",
+    "garp": "Monkey D. Garp",
+    "kaido": "Kaido",
+    "big mom": "Charlotte Linlin",
+    "linlin": "Charlotte Linlin",
+    "yamato": "Yamato",
+    "oden": "Kozuki Oden",
+    "rayleigh": "Silvers Rayleigh",
+    "whitebeard": "Edward Newgate",
+    "newgate": "Edward Newgate",
+    "blackbeard": "Marshall D. Teach",
+    "teach": "Marshall D. Teach",
+    "enel": "Enel",
+    "lucci": "Rob Lucci",
+    "kaku": "Kaku",
+    "hancock": "Boa Hancock",
+    "boa": "Boa Hancock",
+    "marco": "Marco",
+    "king": "King the Conflagration",
+    "queen": "Queen the Plague",
+    "jack": "Jack the Drought",
+    "perona": "Perona",
+    "bonney": "Jewelry Bonney",
+    "kidd": "Eustass Kid",
+    "kid": "Eustass Kid",
+    "bege": "Capone Bege",
+    "hawkins": "Basil Hawkins",
+    "x drake": "X Drake",
+    "drake": "X Drake",
+    "apoo": "Scratchmen Apoo",
+    "smoker": "Smoker",
+    "tashigi": "Tashigi",
+    "sengoku": "Sengoku",
+    "koby": "Coby",
+    "helmeppo": "Helmeppo",
+    "corazon": "Donquixote Rosinante",
+    "rosinante": "Donquixote Rosinante",
+    "reiju": "Vinsmoke Reiju",
+    "ichiji": "Vinsmoke Ichiji",
+    "niji": "Vinsmoke Niji",
+    "yonji": "Vinsmoke Yonji",
+    "judge": "Vinsmoke Judge",
+    "carrot": "Carrot",
+    "pedro": "Pedro",
+    "neptune": "Neptune",
+    "fukaboshi": "Fukaboshi",
+    "shirahoshi": "Shirahoshi",
+    "hody": "Hody Jones",
+    "arlong": "Arlong",
+    "kurohige": "Kurohige (Marshall D. Teach)",
+    "vivi": "Nefeltari Vivi",
+    "karoo": "Karoo",
+    "cavendish": "Cavendish",
+    "bartolomeo": "Bartolomeo",
+    "diamante": "Diamante",
+    "pica": "Pica",
+    "trebol": "Trebol",
+    "sugar": "Sugar",
+    "violet": "Viola",
+    "rebecca": "Rebecca",
+    "kyros": "Kyros",
+    "elizabello": "Elizabello II",
+    "chinjao": "Chinjao",
+    "sai": "Sai",
+    "leo": "Leo",
+    "hajrudin": "Hajrudin",
+    "orlumbus": "Orlumbus",
+    "ideyo": "Ideyo",
+    "gan fall": "Gan Fall",
+    "ganfor": "Gan Fall",
+    "wyper": "Wyper",
+    "norland": "Montblanc Norland",
+    "calgara": "Calgara",
+    "ryuma": "Ryuma",
+    "shimotsuki": "Shimotsuki Ryuma",
+    "denjiro": "Denjiro",
+    "ashura": "Ashura Douji",
+    "kawamatsu": "Kawamatsu",
+    "raizo": "Raizo",
+    "kiku": "Kiku",
+    "kanjuro": "Kanjuro",
+    "tama": "Otama",
+    "otama": "Otama",
+    "hiyori": "Kozuki Hiyori",
+    "momonosuke": "Momonosuke",
+    "kinemon": "Kinemon",
+    "tsuru": "Tsuru",
+    "sentomaru": "Sentomaru",
+    "vegapunk": "Vegapunk",
+    "atlas": "Atlas",
+    "lilith": "Lilith",
+    "shaka": "Shaka",
+    "edison": "Edison",
+    "pythagoras": "Pythagoras",
+    "im": "Imu",
+    "imu": "Imu",
+    "imu sama": "Imu",
+    "goldenweek": "Miss Goldenweek",
+    "golden week": "Miss Goldenweek",
+    "bon clay": "Bentham (Bon Clay)",
+    "bentham": "Bentham (Bon Clay)",
+    "mr 2": "Bentham (Bon Clay)",
+    "mr 1": "Daz Bones",
+    "daz": "Daz Bones",
+    "mr 3": "Galdino (Mr. 3)",
+    "galdino": "Galdino (Mr. 3)",
+    "mr 4": "Mr. 4",
+    "mr 5": "Mr. 5",
+    "miss valentine": "Miss Valentine",
+    "miss doublefinger": "Miss Doublefinger",
+    "miss merry": "Miss Merry Christmas",
+    "miss goldenweek": "Miss Goldenweek",
+}
+
+def resolve_character_name(query: str):
+    """Find a character by exact name, nickname, or partial match. Returns full name or list if ambiguous, or None."""
+    q = query.lower().strip()
+    # 1. Check nickname map
+    if q in NICKNAMES:
+        return NICKNAMES[q]
+    # 2. Exact match
+    for c in CHARACTERS:
+        if c["name"].lower() == q:
+            return c["name"]
+    # 3. Partial match
+    matches = [c["name"] for c in CHARACTERS if q in c["name"].lower()]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        return matches
+    return None
+
+def match_character_name(input_name: str):
+    """Resolve user input to a proper character name. Returns (resolved_name, warning_message_or_None)."""
+    resolved = resolve_character_name(input_name)
+    if resolved is None:
+        return input_name, None
+    if isinstance(resolved, list):
+        return input_name, f"Multiple characters match \"{input_name}\": {', '.join(resolved[:5])}"
+    return resolved, None
+
 def character_lookup(name: str):
     name_lower = name.lower()
     for c in CHARACTERS:
         if c["name"].lower() == name_lower:
             return c
     return None
+
+def collection_search(user: dict, query: str):
+    """Find matching card instances in user's collection using fuzzy name matching. Returns (instances, resolved_name)."""
+    q = query.lower().strip()
+    exact = [inst for inst in user["collection"] if inst["character"].lower() == q]
+    if exact:
+        return exact, exact[0]["character"]
+    resolved = resolve_character_name(query)
+    if isinstance(resolved, list):
+        return [], f"Multiple characters match \"{query}\": {', '.join(resolved[:5])}"
+    if resolved:
+        fuzzy = [inst for inst in user["collection"] if inst["character"].lower() == resolved.lower()]
+        if fuzzy:
+            return fuzzy, resolved
+    return [], None
 
 TYPE_OVERRIDES = {
     "Coby": "Marine", "Helmeppo": "Marine", "Smoker": "Marine", "Tashigi": "Marine",
@@ -1043,7 +1227,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
@@ -1270,6 +1454,39 @@ async def redeem(ctx: commands.Context, code: str = None):
     await ctx.send(embed=embed, view=RedeemView())
 
 # -----------------------------------------------------------------------
+# op codes — view available promo codes
+# -----------------------------------------------------------------------
+@bot.command(name="codes")
+async def codes_cmd(ctx: commands.Context):
+    """View all available promo codes."""
+    data = load_data()
+    promos = data.get("_promo_codes", {})
+    redeemed = set(data.get("_redeemed_codes", []))
+    available = {k: v for k, v in promos.items() if k not in redeemed}
+    if not available:
+        embed = discord.Embed(
+            title="\U0001f3b5 Promo Codes",
+            description="No active promo codes right now. Stay tuned!",
+            color=0xFFD700,
+        )
+        embed.set_footer(text=FOOTER_TEXT)
+        await ctx.send(embed=embed, view=RedeemView())
+        return
+    desc_lines = []
+    for k, v in available.items():
+        rt = REWARD_TYPES.get(v.get("type", "spins"))
+        emoji = rt["emoji"] if rt else "\U0001f3b5"
+        label = rt["label"] if rt else v.get("type", "?")
+        desc_lines.append(f"{emoji} **{k}** \u2014 {v.get('amount', 0):,} {label}")
+    embed = discord.Embed(
+        title="\U0001f3b5 Available Promo Codes",
+        description="\n".join(desc_lines) + "\n\nTap **Redeem Code** below to claim one!",
+        color=0xFFD700,
+    )
+    embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed, view=RedeemView())
+
+# -----------------------------------------------------------------------
 # op restart — owner-only, kills process (process manager auto-restarts)
 # -----------------------------------------------------------------------
 @bot.command(name="restart")
@@ -1470,10 +1687,20 @@ async def help_command(ctx: commands.Context):
         inline=True,
     )
     embed.add_field(
+        name="\U0001f3b5 Promos / Codes",
+        value=(
+            "`op codes` \u2014 view available codes\n"
+            "`op redeem` \u2014 enter a promo code\n"
+            "\u200b\n"
+            "\u200b"
+        ),
+        inline=True,
+    )
+    embed.add_field(
         name="\U0001f4ec Invite & Info",
         value=(
             "`op invite` \u2014 add bot to server\n"
-            "`op redeem` \u2014 redeem a promo code\n"
+            "`op odds` \u2014 view pull rates\n"
             "`op signup` \u2014 this menu\n"
             "\u200b"
         ),
@@ -1793,9 +2020,13 @@ async def card(ctx: commands.Context, *, query: str = None):
             await ctx.send(f"\u26a0\ufe0f No card found with ID **#{inst_id}**.")
             return
     else:
-        matches = [inst for inst in user["collection"] if inst["character"].lower() == query.lower()]
+        matches, resolved = collection_search(user, query)
         if not matches:
-            await ctx.send(f"\u26a0\ufe0f You don't own **{query}**. Check `op inv`.")
+            msg = f"\u26a0\ufe0f You don't own **{query}**." if isinstance(resolved, str) else f"\u26a0\ufe0f You don't own **{query}**. Check `op inv`."
+            await ctx.send(msg)
+            return
+        if isinstance(resolved, str) and not matches:
+            await ctx.send(resolved)
             return
         if len(matches) == 1:
             target_inst = matches[0]
@@ -1884,9 +2115,10 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
 
-    matches = [inst for inst in user["collection"] if inst["character"].lower() == character_name.lower()]
+    matches, resolved = collection_search(user, character_name)
     if not matches:
-        await ctx.send(f"\u26a0\ufe0f You don't own **{character_name}**. Check `op inv`.")
+        msg = resolved if isinstance(resolved, str) else f"\u26a0\ufe0f You don't own **{character_name}**. Check `op inv`."
+        await ctx.send(msg)
         return
 
     target = None
@@ -2146,13 +2378,16 @@ async def team_add(ctx: commands.Context, *, character_name: str = None):
     user = get_user(data, str(ctx.author.id))
 
     team_ids = set(user["team"])
-    matches = [inst for inst in user["collection"] if inst["character"].lower() == character_name.lower() and inst["inst_id"] not in team_ids]
+    q = character_name.lower().strip()
+    resolved = resolve_character_name(character_name)
+    ch_name = (resolved if isinstance(resolved, str) else q) if resolved else q
+    matches = [inst for inst in user["collection"] if inst["character"].lower() == ch_name.lower() and inst["inst_id"] not in team_ids]
     if not matches:
-        owned = any(inst["character"].lower() == character_name.lower() for inst in user["collection"])
+        owned = any(inst["character"].lower() == ch_name.lower() for inst in user["collection"])
         if not owned:
-            await ctx.send(f"\u26a0\ufe0f You don't own **{character_name}**. Check `op inv`.")
+            await ctx.send(f"\u26a0\ufe0f You don't own **{character_name}** ({ch_name}). Check `op inv`.")
         else:
-            await ctx.send(f"\u26a0\ufe0f All your **{character_name}** cards are already on your team.")
+            await ctx.send(f"\u26a0\ufe0f All your **{ch_name}** cards are already on your team.")
         return
     if len(user["team"]) >= user["team_slots"]:
         await ctx.send(
@@ -2179,9 +2414,12 @@ async def team_remove(ctx: commands.Context, *, character_name: str = None):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
 
+    q = character_name.lower().strip()
+    resolved = resolve_character_name(character_name)
+    ch_name = (resolved if isinstance(resolved, str) else q) if resolved else q
     for inst_id in user["team"]:
         for inst in user["collection"]:
-            if inst["inst_id"] == inst_id and inst["character"].lower() == character_name.lower():
+            if inst["inst_id"] == inst_id and inst["character"].lower() == ch_name.lower():
                 user["team"].remove(inst_id)
                 save_data(data)
                 await ctx.send(embed=branded_embed(
@@ -2431,9 +2669,10 @@ async def auction_start(ctx: commands.Context, *, args: str = None):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
 
-    matches = [inst for inst in user["collection"] if inst["character"].lower() == character_name.lower()]
+    matches, resolved = collection_search(user, character_name)
     if not matches:
-        await ctx.send(f"\u26a0\ufe0f You don't own **{character_name}**. Check `op inv` for exact spelling.")
+        msg = resolved if isinstance(resolved, str) else f"\u26a0\ufe0f You don't own **{character_name}**. Check `op inv` for exact spelling."
+        await ctx.send(msg)
         return
 
     target = matches[0]
