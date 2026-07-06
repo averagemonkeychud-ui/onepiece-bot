@@ -1319,18 +1319,23 @@ REWARD_TYPES = {
 }
 
 class PromoModal(discord.ui.Modal, title="Create Promo Code"):
-    code_name = discord.ui.TextInput(label="Code Name", placeholder="e.g. summer2026", max_length=30)
-    reward_type = discord.ui.TextInput(label="Reward (spins / berries / keys)", placeholder="spins", max_length=10, required=False)
-    reward_amount = discord.ui.TextInput(label="Amount", placeholder="e.g. 10", max_length=7)
+    def __init__(self, reward_type: str):
+        super().__init__()
+        self.reward_type = reward_type
+        rt = REWARD_TYPES[reward_type]
+        self.code_name = discord.ui.TextInput(label="Code Name", placeholder="e.g. summer2026", max_length=30)
+        self.reward_amount = discord.ui.TextInput(
+            label=f"Amount ({rt['label']})",
+            placeholder=f"e.g. {rt['default']}",
+            max_length=7,
+        )
+        self.add_item(self.code_name)
+        self.add_item(self.reward_amount)
 
     async def on_submit(self, interaction: discord.Interaction):
         name = self.code_name.value.lower().strip()
         if not name:
             await interaction.response.send_message("\u26a0\ufe0f Code can't be empty.", ephemeral=True)
-            return
-        rtype = self.reward_type.value.strip().lower() or "spins"
-        if rtype not in REWARD_TYPES:
-            await interaction.response.send_message(f"\u26a0\ufe0f Invalid reward type. Choose: {', '.join(REWARD_TYPES.keys())}", ephemeral=True)
             return
         try:
             amount = int(self.reward_amount.value.strip())
@@ -1341,10 +1346,10 @@ class PromoModal(discord.ui.Modal, title="Create Promo Code"):
             return
         data = load_data()
         promos = data.setdefault("_promo_codes", {})
-        promos[name] = {"type": rtype, "amount": amount}
+        promos[name] = {"type": self.reward_type, "amount": amount}
         data["_promo_codes"] = promos
         save_data(data)
-        rt = REWARD_TYPES[rtype]
+        rt = REWARD_TYPES[self.reward_type]
         await interaction.response.send_message(embed=branded_embed(
             "\u2705 Promo Code Created",
             f"**{name}** \u2014 {rt['emoji']} **{amount:,}** {rt['label']}\nTap the **\U0001f3b5 Redeem** button to claim it!",
@@ -1364,7 +1369,21 @@ class PromoCreateView(discord.ui.View):
 
     @discord.ui.button(label="Create Promo Code", style=discord.ButtonStyle.success, emoji="\U0001f3b5")
     async def create_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(PromoModal())
+        opts = [
+            discord.SelectOption(label="Spins", value="spins", emoji="\U0001f3b2", description="Free spins for redeemer"),
+            discord.SelectOption(label="Beli", value="berries", emoji="\U0001f4b0", description="In-game currency"),
+            discord.SelectOption(label="Keys", value="keys", emoji="\U0001f511", description="Key items"),
+        ]
+        select = discord.ui.Select(placeholder="Choose reward type...", options=opts)
+        async def rt_callback(sel_interaction: discord.Interaction):
+            if sel_interaction.user.id != self.owner_id:
+                await sel_interaction.response.send_message("Not your panel.", ephemeral=True)
+                return
+            await sel_interaction.response.send_modal(PromoModal(select.values[0]))
+        select.callback = rt_callback
+        view = discord.ui.View(timeout=60)
+        view.add_item(select)
+        await interaction.response.send_message("Pick what the code gives:", view=view, ephemeral=True)
 
     @discord.ui.button(label="Delete Code", style=discord.ButtonStyle.danger, emoji="\u274c")
     async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
