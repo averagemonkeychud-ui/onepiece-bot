@@ -1171,72 +1171,142 @@ _auction_id_counter = itertools.count(1)
 # -----------------------------------------------------------------------
 # Signup check (runs before every command)
 # -----------------------------------------------------------------------
-def repair_user_data(user: dict) -> None:
-    """Fix common data corruption in a user dict in-place."""
+def repair_user_data(user: dict) -> list:
+    """Fix common data corruption in a user dict in-place. Returns list of fixes."""
+    fixes = []
     if not isinstance(user, dict):
-        return
-    if "collection" not in user or user["collection"] is None:
-        user["collection"] = []
-    if "team" not in user or user["team"] is None:
-        user["team"] = []
-    if not isinstance(user["collection"], list):
-        user["collection"] = list(user["collection"]) if isinstance(user["collection"], (list, tuple)) else []
-    if not isinstance(user["team"], list):
-        user["team"] = list(user["team"]) if isinstance(user["team"], (list, tuple)) else []
+        return fixes
+
+    # 1. ensure all top-level fields exist with valid types
+    EXPECTED_FIELDS = {
+        "collection": (list, []),
+        "team": (list, []),
+        "spins": ((int, float), MAX_SPINS),
+        "berries": ((int, float), 0),
+        "keys": ((int, float), 0),
+        "pity_counter": ((int, float), 0),
+        "spins_used": ((int, float), 0),
+        "reroll_tokens": ((int, float), 0),
+        "fast_spins": ((int, float), 0),
+        "autoroll_remaining": ((int, float), 0),
+        "autoroll_break_until": ((int, float), 0),
+        "fruit_ticket": (bool, False),
+        "team_slots": ((int, float), DEFAULT_TEAM_SIZE),
+        "luck_until_utc": ((int, float), 0),
+        "last_daily_utc": ((int, float), 0),
+        "luck_date": (str, ""),
+        "luck_seconds_today": ((int, float), 0),
+        "_next_inst_id": ((int, float), 1),
+        "signed_up": (bool, True),
+    }
+    for field, (typ, default) in EXPECTED_FIELDS.items():
+        if field not in user or user[field] is None:
+            user[field] = default
+            fixes.append(f"added missing '{field}'")
+        elif not isinstance(user[field], typ):
+            try:
+                user[field] = typ(user[field]) if typ is not tuple else default
+                fixes.append(f"fixed '{field}' type ({type(user[field]).__name__} → {typ.__name__ if typ is not tuple else 'list'})")
+            except (ValueError, TypeError):
+                user[field] = default
+                fixes.append(f"reset '{field}' (unconvertable {type(user[field]).__name__})")
+
+    # 2. ensure collection/team are lists
+    if not isinstance(user.get("collection"), list):
+        old = user.get("collection")
+        user["collection"] = list(old) if isinstance(old, (list, tuple)) else []
+        fixes.append(f"converted collection from {type(old).__name__}")
+    if not isinstance(user.get("team"), list):
+        old = user.get("team")
+        user["team"] = list(old) if isinstance(old, (list, tuple)) else []
+        fixes.append(f"converted team from {type(old).__name__}")
+
+    # 3. validate every card
     valid_races = set(RACES.keys())
-    fixed = []
+    valid_collection = []
+    valid_ids = set()
     next_id = user.get("_next_inst_id", 1)
-    for inst in user["collection"]:
+
+    for idx, inst in enumerate(user["collection"]):
+        card_fixes = []
+
         if not isinstance(inst, dict):
+            fixes.append(f"removed card #{idx} (was {type(inst).__name__})")
             continue
-        inst["character"] = inst.get("character") or "Unknown"
-        inst["rarity"] = inst.get("rarity") or "C"
-        if inst["rarity"] not in RARITIES:
+
+        name = inst.get("character", f"#{idx}")
+        cfix = []
+
+        # character
+        if "character" not in inst or inst["character"] is None:
+            inst["character"] = "Unknown"
+            cfix.append("character")
+        # rarity
+        if "rarity" not in inst or inst["rarity"] is None or inst["rarity"] not in RARITIES:
             inst["rarity"] = "C"
-        race = inst.get("race")
-        if not race or race not in valid_races:
+            cfix.append("rarity")
+        # race
+        if "race" not in inst or inst["race"] is None or inst["race"] not in valid_races:
             inst["race"] = "Human"
+            cfix.append("race")
+        # fruit
         if "fruit" not in inst or inst["fruit"] is None:
             inst["fruit"] = None
         elif isinstance(inst["fruit"], dict):
             if "rarity" not in inst["fruit"] or inst["fruit"]["rarity"] not in FRUIT_RARITIES:
                 inst["fruit"]["rarity"] = "Common"
+                cfix.append("fruit.rarity")
             if "name" not in inst["fruit"]:
                 inst["fruit"]["name"] = "Unknown Fruit"
-        inst["power"] = max(0, inst.get("power", 0))
-        inst["health"] = max(0, inst.get("health", 0))
-        inst["speed"] = max(0, inst.get("speed", 0))
-        if inst.get("inst_id") is None or not isinstance(inst.get("inst_id"), int):
+                cfix.append("fruit.name")
+        else:
+            inst["fruit"] = None
+            cfix.append("fruit (was not dict)")
+        # stats
+        for stat in ("power", "health", "speed"):
+            val = inst.get(stat)
+            if val is None or not isinstance(val, (int, float)):
+                inst[stat] = 0
+                cfix.append(stat)
+        # inst_id
+        iid = inst.get("inst_id")
+        if iid is None or not isinstance(iid, int):
             inst["inst_id"] = next_id
             next_id += 1
-        fixed.append(inst)
-    user["collection"] = fixed
+            cfix.append("inst_id")
+
+        valid_collection.append(inst)
+        valid_ids.add(inst["inst_id"])
+        if cfix:
+            fixes.append(f"fixed '{name}': {', '.join(cfix)}")
+
+    user["collection"] = valid_collection
     if next_id > user.get("_next_inst_id", 1):
         user["_next_inst_id"] = next_id
-    valid_ids = {i["inst_id"] for i in fixed if i.get("inst_id") is not None}
+
+    # 4. prune team refs
     user["team"] = [tid for tid in user.get("team", []) if tid in valid_ids]
-    user["fast_spins"] = max(0, user.get("fast_spins", 0))
-    user["autoroll_remaining"] = max(0, user.get("autoroll_remaining", 0))
-    user["autoroll_break_until"] = float(user.get("autoroll_break_until", 0))
+
+    # 5. clamp balances
+    user["berries"] = max(0, int(user.get("berries", 0)))
+    user["spins"] = max(0, min(MAX_SPINS, int(user.get("spins", 0))))
+    user["keys"] = max(0, int(user.get("keys", 0)))
+    user["pity_counter"] = max(0, int(user.get("pity_counter", 0)))
+    user["spins_used"] = max(0, int(user.get("spins_used", 0)))
+    user["reroll_tokens"] = max(0, int(user.get("reroll_tokens", 0)))
+    user["fast_spins"] = max(0, int(user.get("fast_spins", 0)))
+    user["autoroll_remaining"] = max(0, int(user.get("autoroll_remaining", 0)))
+    user["autoroll_break_until"] = max(0, float(user.get("autoroll_break_until", 0)))
+    user["team_slots"] = max(1, min(MAX_TEAM_SIZE_CAP, int(user.get("team_slots", DEFAULT_TEAM_SIZE))))
+    user["luck_seconds_today"] = max(0, min(7200, int(user.get("luck_seconds_today", 0))))
+    nid = user.get("_next_inst_id", 1)
+    user["_next_inst_id"] = max(1, int(nid)) if isinstance(nid, (int, float)) else 1
+
+    return fixes
 
 def _sanitize_user(user: dict) -> None:
     """Guard against data corruption — clamp all balances, prune invalid refs."""
     repair_user_data(user)
-    user["berries"] = max(0, user.get("berries", 0))
-    user["spins"] = max(0, min(MAX_SPINS, user.get("spins", 0)))
-    user["keys"] = max(0, user.get("keys", 0))
-    user["pity_counter"] = max(0, user.get("pity_counter", 0))
-    user["spins_used"] = max(0, user.get("spins_used", 0))
-    user["reroll_tokens"] = max(0, user.get("reroll_tokens", 0))
-    user["fast_spins"] = max(0, user.get("fast_spins", 0))
-    user["autoroll_remaining"] = max(0, user.get("autoroll_remaining", 0))
-    user["autoroll_break_until"] = max(0, float(user.get("autoroll_break_until", 0)))
-    user["team_slots"] = max(1, min(MAX_TEAM_SIZE_CAP, user.get("team_slots", DEFAULT_TEAM_SIZE)))
-    user["luck_seconds_today"] = max(0, min(7200, user.get("luck_seconds_today", 0)))
-    nid = user.get("_next_inst_id", 1)
-    user["_next_inst_id"] = max(1, int(nid)) if isinstance(nid, (int, float)) else 1
-    valid_ids = {i.get("inst_id") for i in user.get("collection", []) if i.get("inst_id") is not None}
-    user["team"] = [tid for tid in user.get("team", []) if tid in valid_ids]
 
 class SignupView(discord.ui.View):
     def __init__(self):
@@ -2192,10 +2262,27 @@ async def inventory(ctx: commands.Context):
     except Exception as e:
         print(f"[INVENTORY ERROR] {ctx.author.id}:")
         traceback.print_exc()
+        # auto-repair
+        try:
+            data = load_data()
+            user = get_user(data, str(ctx.author.id))
+            fixes = repair_user_data(user)
+            save_data(data)
+            if fixes:
+                await ctx.send(embed=branded_embed(
+                    "\u2705 Auto-Repaired",
+                    f"Found and fixed **{len(fixes)} issue(s)** in your data. Try `op inv` again!\n"
+                    + "\n".join(f"• {f}" for f in fixes[:10])
+                    + ("\n..." if len(fixes) > 10 else ""),
+                    color=0x4CAF50,
+                ))
+                return
+        except Exception as repair_err:
+            print(f"[REPAIR ERROR] {ctx.author.id}: {repair_err}")
         await ctx.send(embed=branded_embed(
             "\u26a0\ufe0f Inventory Error",
-            "Your collection data is corrupted and the repair couldn't fix it. "
-            "An admin has been notified. Try `op fixmycards` to force a repair.",
+            "Your collection has an unexpected issue I couldn't auto-fix.\n"
+            f"Error: `{e}`\n\nTry `op fixmycards` for a deeper scan.",
             color=0xFF5722,
         ))
 
@@ -2207,11 +2294,16 @@ async def inventory(ctx: commands.Context):
 async def fixmycards(ctx: commands.Context):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
-    repair_user_data(user)
+    fixes = repair_user_data(user)
     save_data(data)
+    desc = "Your collection has been scanned and repaired." if fixes else "No issues found — your data looks clean!"
+    if fixes:
+        desc = f"**{len(fixes)} fix(es) applied:**\n" + "\n".join(f"• {f}" for f in fixes[:20])
+        if len(fixes) > 20:
+            desc += f"\n...and {len(fixes) - 20} more"
     await ctx.send(embed=branded_embed(
         "\u2705 Cards Repaired",
-        "Your collection data has been scanned and repaired. Try `op inv` now!",
+        desc,
         color=0x4CAF50,
     ))
 
