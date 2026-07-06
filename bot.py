@@ -2043,10 +2043,13 @@ async def inventory(ctx: commands.Context):
 
     by_char = {}
     for inst in user["collection"]:
-        key = inst["character"]
-        if key not in by_char:
-            by_char[key] = []
-        by_char[key].append(inst)
+        try:
+            key = inst.get("character", "Unknown")
+            if key not in by_char:
+                by_char[key] = []
+            by_char[key].append(inst)
+        except Exception:
+            continue
 
     def _sort_key(item):
         c = character_lookup(item[0])
@@ -2062,11 +2065,16 @@ async def inventory(ctx: commands.Context):
         r = char["rarity"]
         lines = []
         for inst in instances:
-            race_data = RACES.get(inst["race"], RACES["Human"])
-            fruit = inst.get("fruit")
-            fruit_str = FRUIT_RARITIES[fruit["rarity"]]["emoji"] if fruit else ""
-            total = instance_total_stat(inst)
-            lines.append(f"`#{inst['inst_id']:>3}` {race_data['emoji']}{fruit_str}  ⚔{inst['power']:,}  ❤{inst['health']:,}  💨{inst['speed']:,}  📊{total:,}")
+            try:
+                race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+                fruit = inst.get("fruit")
+                fruit_str = FRUIT_RARITIES.get(fruit.get("rarity", ""), {}).get("emoji", "") if fruit else ""
+                total = instance_total_stat(inst)
+                lines.append(f"`#{inst.get('inst_id', 0):>3}` {race_data['emoji']}{fruit_str}  \u2694{inst.get('power', 0):,}  \u2764{inst.get('health', 0):,}  \U0001f4a8{inst.get('speed', 0):,}  \U0001f4ca{total:,}")
+            except Exception:
+                continue
+        if not lines:
+            continue
         embed.add_field(
             name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
             value="\n".join(lines[:10]) + ("\n*+more...*" if len(lines) > 10 else ""),
