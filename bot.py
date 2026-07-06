@@ -3,6 +3,7 @@ import itertools
 import json
 import os
 import random
+import traceback
 from datetime import datetime, timedelta, time as dtime
 
 import discord
@@ -1162,8 +1163,54 @@ _auction_id_counter = itertools.count(1)
 # -----------------------------------------------------------------------
 # Signup check (runs before every command)
 # -----------------------------------------------------------------------
+def repair_user_data(user: dict) -> None:
+    """Fix common data corruption in a user dict in-place."""
+    if not isinstance(user, dict):
+        return
+    if "collection" not in user or user["collection"] is None:
+        user["collection"] = []
+    if "team" not in user or user["team"] is None:
+        user["team"] = []
+    if not isinstance(user["collection"], list):
+        user["collection"] = list(user["collection"]) if isinstance(user["collection"], (list, tuple)) else []
+    if not isinstance(user["team"], list):
+        user["team"] = list(user["team"]) if isinstance(user["team"], (list, tuple)) else []
+    valid_races = set(RACES.keys())
+    fixed = []
+    next_id = user.get("_next_inst_id", 1)
+    for inst in user["collection"]:
+        if not isinstance(inst, dict):
+            continue
+        inst["character"] = inst.get("character") or "Unknown"
+        inst["rarity"] = inst.get("rarity") or "C"
+        if inst["rarity"] not in RARITIES:
+            inst["rarity"] = "C"
+        race = inst.get("race")
+        if not race or race not in valid_races:
+            inst["race"] = "Human"
+        if "fruit" not in inst or inst["fruit"] is None:
+            inst["fruit"] = None
+        elif isinstance(inst["fruit"], dict):
+            if "rarity" not in inst["fruit"] or inst["fruit"]["rarity"] not in FRUIT_RARITIES:
+                inst["fruit"]["rarity"] = "Common"
+            if "name" not in inst["fruit"]:
+                inst["fruit"]["name"] = "Unknown Fruit"
+        inst["power"] = max(0, inst.get("power", 0))
+        inst["health"] = max(0, inst.get("health", 0))
+        inst["speed"] = max(0, inst.get("speed", 0))
+        if inst.get("inst_id") is None or not isinstance(inst.get("inst_id"), int):
+            inst["inst_id"] = next_id
+            next_id += 1
+        fixed.append(inst)
+    user["collection"] = fixed
+    if next_id > user.get("_next_inst_id", 1):
+        user["_next_inst_id"] = next_id
+    valid_ids = {i["inst_id"] for i in fixed if i.get("inst_id") is not None}
+    user["team"] = [tid for tid in user.get("team", []) if tid in valid_ids]
+
 def _sanitize_user(user: dict) -> None:
     """Guard against data corruption — clamp all balances, prune invalid refs."""
+    repair_user_data(user)
     user["berries"] = max(0, user.get("berries", 0))
     user["spins"] = max(0, min(MAX_SPINS, user.get("spins", 0)))
     user["keys"] = max(0, user.get("keys", 0))
@@ -1226,7 +1273,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes", "shop", "characters"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes", "shop", "characters", "fixmycards"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
@@ -1277,7 +1324,8 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     if "not signed up" in msg.lower():
         return
     await ctx.send(f"\u26a0\ufe0f Something went wrong. The error has been logged.")
-    print(f"[ERROR] {ctx.author}: {ctx.message.content} \u2192 {error}")
+    print(f"[ERROR] {ctx.author}: {ctx.message.content}")
+    traceback.print_exc()
 
 # -----------------------------------------------------------------------
 # op signup
@@ -1719,7 +1767,8 @@ async def help_command(ctx: commands.Context):
             "`op inv`/`op inventory` \u2014 your cards\n"
             "`op card <name>` \u2014 view card stats\n"
             "`op dex`/`op characters` \u2014 character pool\n"
-            "`op sell <name>` \u2014 sell a card"
+            "`op sell <name>` \u2014 sell a card\n"
+            "`op fixmycards` \u2014 repair corrupted data"
         ),
         inline=True,
     )
@@ -2034,58 +2083,84 @@ async def daily(ctx: commands.Context):
 @bot.command(name="inventory", aliases=["inv", "collection"])
 @commands.cooldown(1, 4, commands.BucketType.user)
 async def inventory(ctx: commands.Context):
-    data = load_data()
-    user = get_user(data, str(ctx.author.id))
+    try:
+        data = load_data()
+        user = get_user(data, str(ctx.author.id))
 
-    if not user["collection"]:
-        await ctx.send(f"{ctx.author.mention}, you haven't pulled anyone yet! Try `op spin`.")
-        return
+        if not user.get("collection"):
+            await ctx.send(f"{ctx.author.mention}, you haven't pulled anyone yet! Try `op spin`.")
+            return
 
-    by_char = {}
-    for inst in user["collection"]:
-        try:
-            key = inst.get("character", "Unknown")
-            if key not in by_char:
-                by_char[key] = []
-            by_char[key].append(inst)
-        except Exception:
-            continue
-
-    def _sort_key(item):
-        c = character_lookup(item[0])
-        return RARITY_ORDER.index(c["rarity"]) if c else 99
-    sorted_chars = sorted(by_char.items(), key=_sort_key)
-
-    embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
-
-    for char_name, instances in sorted_chars:
-        char = character_lookup(char_name)
-        if not char:
-            continue
-        r = char["rarity"]
-        lines = []
-        for inst in instances:
+        by_char = {}
+        for inst in user["collection"]:
             try:
-                race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
-                fruit = inst.get("fruit")
-                fruit_str = FRUIT_RARITIES.get(fruit.get("rarity", ""), {}).get("emoji", "") if fruit else ""
-                total = instance_total_stat(inst)
-                lines.append(f"`#{inst.get('inst_id', 0):>3}` {race_data['emoji']}{fruit_str}  \u2694{inst.get('power', 0):,}  \u2764{inst.get('health', 0):,}  \U0001f4a8{inst.get('speed', 0):,}  \U0001f4ca{total:,}")
+                key = inst.get("character", "Unknown")
+                if key not in by_char:
+                    by_char[key] = []
+                by_char[key].append(inst)
             except Exception:
                 continue
-        if not lines:
-            continue
-        embed.add_field(
-            name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
-            value="\n".join(lines[:10]) + ("\n*+more...*" if len(lines) > 10 else ""),
-            inline=False,
-        )
 
-    embed.add_field(name="\U0001f4b0 Berries", value=f"{user['berries']:,}", inline=True)
-    embed.add_field(name="\U0001f3af Spins", value=f"{user['spins']}/{MAX_SPINS}", inline=True)
-    embed.add_field(name="\U0001f511 Keys", value=str(user["keys"]), inline=True)
-    embed.add_field(name="\u26a1 Pity", value=f"{user['pity_counter']}/{PITY_THRESHOLD}", inline=True)
-    await ctx.send(embed=embed)
+        def _sort_key(item):
+            c = character_lookup(item[0])
+            return RARITY_ORDER.index(c["rarity"]) if c else 99
+        sorted_chars = sorted(by_char.items(), key=_sort_key)
+
+        embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
+
+        for char_name, instances in sorted_chars:
+            char = character_lookup(char_name)
+            if not char:
+                continue
+            r = char["rarity"]
+            lines = []
+            for inst in instances:
+                try:
+                    race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+                    fruit = inst.get("fruit")
+                    fruit_str = FRUIT_RARITIES.get(fruit.get("rarity", ""), {}).get("emoji", "") if fruit else ""
+                    total = instance_total_stat(inst)
+                    lines.append(f"`#{inst.get('inst_id', 0):>3}` {race_data['emoji']}{fruit_str}  \u2694{inst.get('power', 0):,}  \u2764{inst.get('health', 0):,}  \U0001f4a8{inst.get('speed', 0):,}  \U0001f4ca{total:,}")
+                except Exception:
+                    continue
+            if not lines:
+                continue
+            embed.add_field(
+                name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
+                value="\n".join(lines[:10]) + ("\n*+more...*" if len(lines) > 10 else ""),
+                inline=False,
+            )
+
+        embed.add_field(name="\U0001f4b0 Berries", value=f"{user.get('berries', 0):,}", inline=True)
+        embed.add_field(name="\U0001f3af Spins", value=f"{user.get('spins', 0)}/{MAX_SPINS}", inline=True)
+        embed.add_field(name="\U0001f511 Keys", value=str(user.get("keys", 0)), inline=True)
+        embed.add_field(name="\u26a1 Pity", value=f"{user.get('pity_counter', 0)}/{PITY_THRESHOLD}", inline=True)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        print(f"[INVENTORY ERROR] {ctx.author.id}:")
+        traceback.print_exc()
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Inventory Error",
+            "Your collection data is corrupted and the repair couldn't fix it. "
+            "An admin has been notified. Try `op fixmycards` to force a repair.",
+            color=0xFF5722,
+        ))
+
+# -----------------------------------------------------------------------
+# op fixmycards — force-repair a user's data
+# -----------------------------------------------------------------------
+@bot.command(name="fixmycards")
+@commands.cooldown(1, 1, commands.BucketType.user)
+async def fixmycards(ctx: commands.Context):
+    data = load_data()
+    user = get_user(data, str(ctx.author.id))
+    repair_user_data(user)
+    save_data(data)
+    await ctx.send(embed=branded_embed(
+        "\u2705 Cards Repaired",
+        "Your collection data has been scanned and repaired. Try `op inv` now!",
+        color=0x4CAF50,
+    ))
 
 # -----------------------------------------------------------------------
 # op card — view a specific instance's full card
