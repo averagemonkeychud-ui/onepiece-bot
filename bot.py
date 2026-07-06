@@ -874,6 +874,17 @@ def branded_embed(title: str, description: str = "", color: int = BRAND_COLOR) -
 def instance_total_stat(inst: dict) -> int:
     return inst["power"] + inst["health"] + inst["speed"]
 
+# ── Max stat reference per rarity for stat bars ──
+_STAT_MAX = {
+    r: {s: bands[s][1] for s in ("power", "health", "speed")}
+    for r, bands in STAT_BANDS.items()
+}
+
+def _stat_bar(val: int, max_val: int, length: int = 10) -> str:
+    filled = round((val / max(max_val, 1)) * length)
+    filled = max(0, min(length, filled))
+    return "▰" * filled + "▱" * (length - filled)
+
 def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.Embed:
     if isinstance(ctx_or_author, commands.Context):
         display_name = ctx_or_author.author.display_name
@@ -904,30 +915,26 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
     card += f"{race_data['emoji']}  {inst['race']}"
     if fruit:
         fru = FRUIT_RARITIES[fruit["rarity"]]
-        card += f"   |   {fru['emoji']}  {fruit['name']}"
+        card += f"   ┆   {fru['emoji']}  {fruit['name']}"
         card += f"\n`{fruit['type']}`"
     else:
         card += "\n`No Devil Fruit`"
 
     card += "\n\n"
 
-    # Stat block — clean compact
-    stats = [
-        ("⚔", "Power", inst["power"]),
-        ("❤", "Health", inst["health"]),
-        ("💨", "Speed", inst["speed"]),
+    # Stat bars
+    maxes = _STAT_MAX.get(rarity, _STAT_MAX["C"])
+    bars = [
+        f"⚔ **Power**  `{inst['power']:>5,}`  {_stat_bar(inst['power'], maxes['power'])}",
+        f"❤ **Health** `{inst['health']:>5,}`  {_stat_bar(inst['health'], maxes['health'])}",
+        f"💨 **Speed**  `{inst['speed']:>5,}`  {_stat_bar(inst['speed'], maxes['speed'])}",
     ]
-
-    stat_lines = []
-    for emoji, label, val in stats:
-        stat_lines.append(f"{emoji}  **{label}**`{val:>7,}`")
-
-    sep = "\n"
-    card += sep.join(stat_lines)
-    card += f"\n\n📊  **TOTAL**`{total:>10,}`"
+    card += "\n".join(bars)
+    card += f"\n━━━━━━━━━━━━━━━━━━━━━━━━━"
+    card += f"\n📊 **TOTAL**  `{total:>6,}`  {_stat_bar(total, sum(maxes.values()))}"
 
     # Race bonus footnote
-    card += f"\n*{race_data['emoji']} {inst['race']}: {race_data['desc']}*"
+    card += f"\n\n*{race_data['emoji']} {inst['race']}: {race_data['desc']}*"
     if fruit:
         scale = RARITY_FRUIT_SCALE[rarity]
         card += f"\n*{FRUIT_RARITIES[fruit['rarity']]['emoji']} Fruit effect scaled x{scale:.2f} by {rarity} tier*"
@@ -937,15 +944,15 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
     # ── Extra event fields ──
     if extra:
         if extra.get("pity_triggered"):
-            embed.add_field(name="\u26a1 Pity Activated", value=f"{PITY_THRESHOLD} spins without an A+ — guaranteed pull.", inline=False)
+            embed.add_field(name="\u26a1 Pity Activated", value=f"**{PITY_THRESHOLD}** spins without an A+ — guaranteed pull!", inline=False)
         if extra.get("luck_active"):
-            embed.add_field(name="\U0001f340 2x Luck Active", value="Better odds in effect!", inline=False)
+            embed.add_field(name="\U0001f340 2x Luck Active", value="Better odds are in effect!", inline=False)
         if extra.get("hdygt"):
-            embed.add_field(name="\U0001f30c Astronomically Rare", value="1 in 1,000,000 pull — screenshot this.", inline=False)
+            embed.add_field(name="\U0001f30c Astronomically Rare", value="**1 in 1,000,000** pull — screenshot this.", inline=False)
         if extra.get("duplicate"):
             embed.add_field(name="\u267b\ufe0f Duplicate", value=f"Keep the card or convert for **{extra.get('payout', 0):,} Beli**?", inline=False)
         if extra.get("keys_found"):
-            embed.add_field(name="\U0001f511 Key Drop", value=f"+{extra['keys_found']} Key ({extra['keys']} total)", inline=False)
+            embed.add_field(name="\U0001f511 Key Drop", value=f"+{extra['keys_found']} Key (**{extra['keys']}** total)", inline=False)
         if extra.get("bonus_beli"):
             embed.add_field(name="\U0001f4b0 Bonus Beli", value=f"+{extra['bonus_beli']:,}", inline=False)
 
