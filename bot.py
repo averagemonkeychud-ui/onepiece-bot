@@ -1239,7 +1239,10 @@ async def ensure_signed_up(ctx: commands.Context):
         embed.set_footer(text=FOOTER_TEXT)
         await ctx.send(embed=embed, view=SignupView())
         raise commands.CommandError("User not signed up")
-    _sanitize_user(user)
+    try:
+        _sanitize_user(user)
+    except Exception as e:
+        print(f"[SANITIZE ERROR] {ctx.author.id}: {e}")
 
 # -----------------------------------------------------------------------
 # on_ready
@@ -1273,6 +1276,7 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     msg = str(error)
     if "not signed up" in msg.lower():
         return
+    await ctx.send(f"\u26a0\ufe0f Something went wrong. The error has been logged.")
     print(f"[ERROR] {ctx.author}: {ctx.message.content} \u2192 {error}")
 
 # -----------------------------------------------------------------------
@@ -2032,7 +2036,6 @@ async def daily(ctx: commands.Context):
 async def inventory(ctx: commands.Context):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
-    save_data(data)
 
     if not user["collection"]:
         await ctx.send(f"{ctx.author.mention}, you haven't pulled anyone yet! Try `op spin`.")
