@@ -1103,7 +1103,7 @@ class DuplicateChoiceView(discord.ui.View):
             self.choice = "convert"
 
 @bot.command(name="spin", aliases=["roll"])
-@commands.cooldown(1, ROLL_ANIMATION_DELAY, commands.BucketType.user)
+@commands.cooldown(1, 3, commands.BucketType.user)
 async def spin(ctx: commands.Context):
     """Spin for a random One Piece character. Costs 1 spin."""
     data = load_data()
