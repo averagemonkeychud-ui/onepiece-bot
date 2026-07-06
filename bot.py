@@ -15,7 +15,20 @@ try:
 except ImportError:
     HAS_PG = False
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+_raw_db_url = os.getenv("DATABASE_URL")
+
+# If DATABASE_URL is not set, try constructing from Railway's individual PG variables
+if not _raw_db_url:
+    pg_host = os.getenv("PGHOST") or os.getenv("PGHOSTADDR")
+    pg_port = os.getenv("PGPORT", "5432")
+    pg_user = os.getenv("PGUSER")
+    pg_pass = os.getenv("PGPASSWORD")
+    pg_db = os.getenv("PGDATABASE")
+    if pg_host and pg_user and pg_pass and pg_db:
+        from urllib.parse import quote_plus
+        _raw_db_url = f"postgresql://{quote_plus(pg_user)}:{quote_plus(pg_pass)}@{pg_host}:{pg_port}/{pg_db}"
+
+DATABASE_URL = _raw_db_url
 _PG_CONN = None
 
 def _pg_connect():
@@ -1030,7 +1043,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status", "odds"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
