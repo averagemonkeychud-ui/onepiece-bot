@@ -1226,7 +1226,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes", "shop", "characters"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
@@ -1256,6 +1256,24 @@ async def on_ready():
         auto_save.start()
     pg_status = "[PostgreSQL ACTIVE]" if DATABASE_URL and HAS_PG and _pg_connect() else "[File-based storage]"
     print(f"Logged in as {bot.user} \u2014 ready to roll! {pg_status}")
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"\u23f3 Slow down! Try again in {error.retry_after:.1f}s.")
+        return
+    if isinstance(error, commands.CommandNotFound):
+        return
+    if isinstance(error, commands.MemberNotFound):
+        await ctx.send("\u26a0\ufe0f Member not found.")
+        return
+    if isinstance(error, commands.BadArgument):
+        await ctx.send("\u26a0\ufe0f Bad argument. Check `op help` for correct usage.")
+        return
+    msg = str(error)
+    if "not signed up" in msg.lower():
+        return
+    print(f"[ERROR] {ctx.author}: {ctx.message.content} \u2192 {error}")
 
 # -----------------------------------------------------------------------
 # op signup
@@ -1439,7 +1457,15 @@ async def promocode_cmd(ctx: commands.Context):
 # op redeem — claim a promo code (button + modal)
 # -----------------------------------------------------------------------
 class RedeemModal(discord.ui.Modal, title="Redeem Promo Code"):
-    code_input = discord.ui.TextInput(label="Enter your code", placeholder="e.g. summer2026", max_length=30)
+    def __init__(self, default_code: str = ""):
+        super().__init__()
+        self.code_input = discord.ui.TextInput(
+            label="Enter your code",
+            placeholder="e.g. summer2026",
+            max_length=30,
+            default=default_code or None,
+        )
+        self.add_item(self.code_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         code = self.code_input.value.lower().strip()
@@ -1477,32 +1503,24 @@ class RedeemModal(discord.ui.Modal, title="Redeem Promo Code"):
         ))
 
 class RedeemView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, default_code: str = ""):
         super().__init__(timeout=60)
+        self.default_code = default_code
 
     @discord.ui.button(label="Redeem Code", style=discord.ButtonStyle.primary, emoji="\U0001f3b5")
     async def redeem_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(RedeemModal())
+        await interaction.response.send_modal(RedeemModal(self.default_code))
 
 @bot.command(name="redeem")
 @commands.cooldown(1, 4, commands.BucketType.user)
 async def redeem(ctx: commands.Context, code: str = None):
-    if code:
-        modal = RedeemModal()
-        modal.code_input.default = code
-        await ctx.send(embed=branded_embed(
-            "\U0001f3b5 Redeem Code",
-            "Enter your code in the popup!",
-            color=0x9C27B0,
-        ), view=RedeemView())
-        return
     embed = discord.Embed(
         title="\U0001f3b5 Redeem a Code",
         description="Tap the button below and type in your promo code!",
         color=0xFFD700,
     )
     embed.set_footer(text=FOOTER_TEXT)
-    await ctx.send(embed=embed, view=RedeemView())
+    await ctx.send(embed=embed, view=RedeemView(default_code=code or ""))
 
 # -----------------------------------------------------------------------
 # op codes — view available promo codes
@@ -2001,6 +2019,7 @@ async def daily(ctx: commands.Context):
 # op inventory / op inv
 # -----------------------------------------------------------------------
 @bot.command(name="inventory", aliases=["inv", "collection"])
+@commands.cooldown(1, 4, commands.BucketType.user)
 async def inventory(ctx: commands.Context):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
