@@ -128,6 +128,61 @@ SHOP_AUTOROLL_BREAK = 40
 SPIN_CONSUME_AUTOROLL = 8
 
 # =============================================================================
+# ASSET IMAGES (PNG URLs for icons used throughout the bot)
+# =============================================================================
+
+RARITY_IMAGES = {
+    "E":     "https://gallery.yopriceville.com/downloadfullsize/send/13982",
+    "D":     "https://gallery.yopriceville.com/downloadfullsize/send/25091",
+    "C":     "https://gallery.yopriceville.com/downloadfullsize/send/31222",
+    "B":     "https://gallery.yopriceville.com/downloadfullsize/send/27290",
+    "A":     "https://gallery.yopriceville.com/downloadfullsize/send/21617",
+    "S":     "https://gallery.yopriceville.com/downloadfullsize/send/12483",
+    "SS":    "https://png.pngtree.com/png-clipart/20240606/original/pngtree-golden-sword-logo-png-image_15258578.png",
+    "HDYGT": "https://static.vecteezy.com/system/resources/thumbnails/060/280/583/small_2x/question-mark-question-mark-icon-pixel-art-style-png.png",
+}
+
+SHOP_IMAGES = {
+    "luck":     "https://www.nicepng.com/png/full/153-1533439_wanted-pics-of-4-leaf-clovers-successful-pictures.png",
+    "key":      "https://png.pngtree.com/png-vector/20250709/ourmid/pngtree-ornate-brass-key-png-image_16731146.webp",
+    "refill":   "https://preview.redd.it/where-can-i-get-all-these-icons-that-almost-every-roblox-v0-3xxbtl8zzxgb1.png?width=420&format=png&auto=webp&s=42a7876c1602ebfff91f17075bc66c5b87823512",
+    "teamslot": "https://cdn-icons-png.magnific.com/256/7499/7499986.png?semt=ais_white_label",
+    "fastspins":"https://images.vexels.com/media/users/3/271145/isolated/preview/b269dc25aafe3805472236a2d70a0b7f-thunderbolt-minimalist-icon.png",
+    "autoroll": "https://preview.redd.it/where-can-i-get-all-these-icons-that-almost-every-roblox-v0-3xxbtl8zzxgb1.png?width=420&format=png&auto=webp&s=42a7876c1602ebfff91f17075bc66c5b87823512",
+}
+
+FRUIT_IMAGES = {
+    "Common":    "https://static.vecteezy.com/system/resources/thumbnails/067/688/311/small/vintage-apple-fruit-for-nostalgic-aesthetics-retro-illustration-isolated-on-transparent-background-png.png",
+    "Uncommon":  "https://freepngimg.com/thumb/lemon/9-2-lemon-png.png",
+    "Rare":      "https://freepngimg.com/save/14495-orange-png-clipart/744x744",
+    "Legendary": "https://gallery.yopriceville.com/downloadfullsize/send/27379",
+    "Mythical":  "https://static.vecteezy.com/system/resources/thumbnails/072/759/192/small/isolated-tornado-storm-weather-funnel-cloud-natural-disaster-twister-cyclone-vortex-hurricane-danger-100char-on-transparent-background-png.png",
+}
+
+STAT_IMAGES = {
+    "power": "https://www.pngkey.com/png/full/57-573907_crossed-swords-nightmarionne-gif.png",
+    "health":"https://www.onlygfx.com/wp-content/uploads/2021/02/6-pixel-heart-4.png",
+    "speed": "https://static.vecteezy.com/system/resources/thumbnails/055/134/004/small/3d-wind-icon-illustration-render-png.png",
+    "total": "https://freepngimg.com/save/132732-antique-map-free-transparent-image-hd/1280x784",
+}
+
+RACE_IMAGES = {
+    "Human":    "https://www.pngkey.com/png/full/12-124372_people-human-clipart-transparent-background.png",
+    "Fishman":  "https://png.pngtree.com/png-clipart/20241119/original/pngtree-tilapia-fish-4k-transparent-background-png-image_17267081.png",
+    "Mink":     "https://images.squarespace-cdn.com/content/v1/5e77a95845630059ae9de949/1664562080769-9YZ4KYGWDUY68W0ZKUNZ/pawprint.png?format=1500w",
+    "Merfolk":  "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9v0naI49BTTKjgd5_ldTqPYHIrJNC33RHhItUX3WZqw&s=10",
+    "Giant":    "https://static.vecteezy.com/system/resources/thumbnails/065/944/629/small/gorilla-ape-primate-on-transparent-background-png.png",
+    "Lunarian": "https://png.pngtree.com/png-vector/20240827/ourmid/pngtree-realistic-3d-fire-flame-effect-for-designs-png-image_13631567.png",
+    "Skypiean": "https://png.pngtree.com/png-clipart/20240418/original/pngtree-realistic-cloud-or-clouds-element-png-image_14886890.png",
+    "Longarm":  "https://static.vecteezy.com/system/resources/thumbnails/047/650/575/small/male-biceps-muscles-flexing-biceps-strong-arm-flat-illustration-style-free-png.png",
+    "Longleg":  "https://static.thenounproject.com/png/61527-200.png",
+    "Dwarf":    "https://static.vecteezy.com/system/resources/thumbnails/070/080/381/small_2x/watercolor-yellow-ruler-free-png.png",
+    "Buccaneer":"https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/1bff7c4d-7f69-4106-9e6d-393c179ea4ff/depvjhr-cc9121f8-e1b9-4b8a-8699-b89f8136d178.png/v1/fill/w_1280,h_1707/skull_png_by_devianstock_depvjhr-fullview.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9MTcwNyIsInBhdGgiOiIvZi8xYmZmN2M0ZC03ZjY5LTQxMDYtOWU2ZC0zOTNjMTc5ZWE0ZmYvZGVwdmpoci1jYzkxMjFmOC1lMWI5LTRiOGEtODY5OS1iODlmODEzNmQxNzgucG5nIiwid2lkdGgiOiI8PTEyODAifV1dLCJhdWQiOlsidXJuOnNlcnZpY2U6aW1hZ2Uub3BlcmF0aW9ucyJdfQ.2baBmaP2Ti0SIFJvY_9ZthTNhRCpsxl7r-_oN-IzaY0",
+    "Kuja":     "https://png.pngtree.com/png-clipart/20220705/ourmid/pngtree-bow-and-arrow-cartoon-png-image_5683004.png",
+    "Cyborg":   "https://png.pngtree.com/png-vector/20250905/ourmid/pngtree-metallic-gear-settings-icon-silver-gray-polished-high-resolution-vector-symbol-png-image_17370272.webp",
+}
+
+# =============================================================================
 # RACES (randomized per pull, small stat modifiers)
 # =============================================================================
 RACES = {
@@ -903,10 +958,13 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
         color=rarity_info["color"],
     )
 
-    embed.set_author(name=f"{rarity}  —  {inst['race']}")
+    embed.set_author(name=f"{rarity}  —  {inst['race']}", icon_url=RARITY_IMAGES.get(rarity))
 
     if char and char.get("image"):
         embed.set_image(url=char["image"])
+
+    if fruit:
+        embed.set_thumbnail(url=FRUIT_IMAGES.get(fruit["rarity"]))
 
     # ── Card body ──
     card = ""
@@ -2873,6 +2931,7 @@ SHOP_EMOJIS = {
 
 def _build_shop_embed(user: dict = None) -> discord.Embed:
     embed = branded_embed("\U0001f6cd\ufe0f OP Shop", color=0x00BFA5)
+    embed.set_thumbnail(url=SHOP_IMAGES.get("luck"))
     if user:
         embed.description = f"\U0001f4b0 Your balance: **{user['berries']:,} Beli**\nBuy any item by tapping a button below!"
     else:
