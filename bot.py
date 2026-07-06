@@ -1026,7 +1026,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite"):
+    if ctx.command.name in ("signup", "help", "invite", "status"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
@@ -1052,8 +1052,10 @@ async def on_ready():
         _auction_id_counter = itertools.count(data["_next_id"])
     if not auction_watcher.is_running():
         auction_watcher.start()
-    pg_status = "PostgreSQL ACTIVE" if DATABASE_URL and HAS_PG and _pg_connect() else "File-based storage"
-    print(f"Logged in as {bot.user} \u2014 ready to roll! [{pg_status}]")
+    if not auto_save.is_running():
+        auto_save.start()
+    pg_status = "[PostgreSQL ACTIVE]" if DATABASE_URL and HAS_PG and _pg_connect() else "[File-based storage]"
+    print(f"Logged in as {bot.user} \u2014 ready to roll! {pg_status}")
 
 # -----------------------------------------------------------------------
 # op signup
@@ -1229,6 +1231,25 @@ async def save_cmd(ctx: commands.Context):
     ))
 
 # -----------------------------------------------------------------------
+# op status — check bot status
+# -----------------------------------------------------------------------
+@bot.command(name="status")
+async def status_cmd(ctx: commands.Context):
+    """Check bot status and database connection."""
+    pg_ok = DATABASE_URL and HAS_PG and _pg_connect()
+    pg_status = "\u2705 Connected" if pg_ok else "\u274c Disconnected"
+    storage = "PostgreSQL + File backup" if DATABASE_URL and HAS_PG else "File-based only (data resets on Railway!)"
+    embed = discord.Embed(
+        title="\U0001f916 OP Bot Status",
+        color=0xFFD700,
+    )
+    embed.add_field(name="\U0001f4e1 PostgreSQL", value=pg_status, inline=True)
+    embed.add_field(name="\U0001f4be Storage Mode", value=storage, inline=True)
+    embed.add_field(name="\U0001f4dd Total Users", value=f"{len([k for k in load_data().keys() if not k.startswith('_')])}", inline=True)
+    embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed)
+
+# -----------------------------------------------------------------------
 # op help
 # -----------------------------------------------------------------------
 @bot.command(name="help")
@@ -1314,7 +1335,7 @@ async def help_command(ctx: commands.Context):
             "`op promocode` \u2014 create promo codes\n"
             "`op restart` \u2014 restart the bot\n"
             "`op save` \u2014 force save data\n"
-            "\u200b"
+            "`op status` \u2014 check DB status"
         ),
         inline=True,
     )
@@ -2503,6 +2524,13 @@ async def _show_leaderboard(ctx: commands.Context, server_only: bool):
         )
 
     await ctx.send(embed=embed)
+
+@tasks.loop(seconds=120)
+async def auto_save():
+    """Periodically save data to ensure persistence."""
+    data = load_data()
+    save_data(data)
+    save_auctions(load_auctions())
 
 # -----------------------------------------------------------------------
 # RUN
