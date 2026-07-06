@@ -977,19 +977,67 @@ def _sanitize_user(user: dict) -> None:
     valid_ids = {i.get("inst_id") for i in user.get("collection", []) if i.get("inst_id") is not None}
     user["team"] = [tid for tid in user.get("team", []) if tid in valid_ids]
 
+class SignupView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="Sign Up", style=discord.ButtonStyle.success, emoji="\U0001f3f4\u200d\u2620\ufe0f")
+    async def signup_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        data = load_data()
+        user = get_user(data, str(interaction.user.id))
+        if user["signed_up"]:
+            await interaction.response.send_message("You're already signed up!", ephemeral=True)
+            return
+        user["signed_up"] = True
+        user["spins"] = MAX_SPINS
+        user["berries"] = 20_000
+        save_data(data)
+        embed = discord.Embed(
+            title="\U0001f3f4\u200d\u2620\ufe0f Welcome to the Grand Line!",
+            description=(
+                f"{interaction.user.mention}, you're now a pirate!\n\n"
+                f"\U0001f3b2 **{MAX_SPINS} free spins**\n"
+                f"\U0001f4b0 **20,000 Beli**\n\n"
+                "Hit **\U0001f3b2 Spin** below to pull your first character!"
+            ),
+            color=0xFFD700,
+        )
+        embed.set_footer(text=FOOTER_TEXT)
+        view = WelcomeView()
+        await interaction.response.send_message(embed=embed, view=view)
+
+class WelcomeView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=60)
+
+    @discord.ui.button(label="\U0001f3b2 Spin Now", style=discord.ButtonStyle.primary, emoji="\U0001f3b2")
+    async def spin_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await spin(ctx)
+
+    @discord.ui.button(label="\U0001f4dc Commands", style=discord.ButtonStyle.secondary, emoji="\U0001f4dc")
+    async def help_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer()
+        ctx = await bot.get_context(interaction.message)
+        ctx.author = interaction.user
+        await help_command(ctx)
+
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help"):
+    if ctx.command.name in ("signup", "help", "invite"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
     if not user or not user.get("signed_up"):
-        await ctx.send(embed=branded_embed(
-            "\u26a0\ufe0f Not Signed Up",
-            "You need to sign up first! Run **`op signup`** to start your adventure.\n\n"
-            "Get starter spins, Beli, and access to all commands!",
+        embed = discord.Embed(
+            title="\u26a0\ufe0f Not Signed Up",
+            description="You need to sign up before using commands!\n\nTap the button below to start your adventure \u2014 free spins & Beli await.",
             color=0xFF5722,
-        ))
+        )
+        embed.set_footer(text=FOOTER_TEXT)
+        await ctx.send(embed=embed, view=SignupView())
         raise commands.CommandError("User not signed up")
     _sanitize_user(user)
 
@@ -1016,23 +1064,32 @@ async def signup(ctx: commands.Context):
     data = load_data()
     user = get_user(data, str(ctx.author.id))
     if user["signed_up"]:
-        await ctx.send(embed=branded_embed(
-            "\u2705 Already Signed Up",
-            f"{ctx.author.mention}, you're already in the crew! Head to `op help` to see commands.",
+        embed = discord.Embed(
+            title="\u2705 Already Signed Up",
+            description=f"{ctx.author.mention}, you're already in the crew!",
             color=0x4CAF50,
-        ))
+        )
+        embed.set_footer(text=FOOTER_TEXT)
+        await ctx.send(embed=embed, view=WelcomeView())
         return
-    user["signed_up"] = True
-    user["spins"] = MAX_SPINS
-    user["berries"] = 20_000
-    save_data(data)
-    await ctx.send(embed=branded_embed(
-        "\U0001f3f4\u200d\u2620\ufe0f Signed Up!",
-        f"{ctx.author.mention}, welcome to the Grand Line!\n\n"
-        f"You've received **{MAX_SPINS} free spins** and **20,000 Beli** to start your journey.\n"
-        f"Run **`op spin`** to pull your first character, or **`op help`** to see all commands.",
-        color=0x4CAF50,
-    ))
+    embed = discord.Embed(
+        title="\U0001f3f4\u200d\u2620\ufe0f Join Your Crew",
+        description=(
+            "Welcome to **OP Bot** \u2014 the ultimate One Piece gacha experience!\n\n"
+            "Collect your favourite characters, unlock Devil Fruits, master rare races, "
+            "and duel other players to become the Pirate King.\n\n"
+            "Tap the button below to get started!"
+        ),
+        color=0xFFD700,
+    )
+    embed.add_field(
+        name="\U0001f3c6 What You Get",
+        value=f"\U0001f3b2 **{MAX_SPINS}** Free Spins\n\U0001f4b0 **20,000** Beli\n\U0001f3af Instant Access to All Commands",
+        inline=False,
+    )
+    embed.set_thumbnail(url="https://i.imgur.com/Y7v1h9M.png")
+    embed.set_footer(text=FOOTER_TEXT)
+    await ctx.send(embed=embed, view=SignupView())
 
 # -----------------------------------------------------------------------
 # op invite
@@ -1146,87 +1203,122 @@ async def restart_bot(ctx: commands.Context):
     if not owner or ctx.author.id != owner:
         await ctx.send("\u26a0\ufe0f Only the bot owner can use this command.")
         return
+    save_data(load_data())
     await ctx.send(embed=branded_embed(
         "\U0001f504 Restarting",
-        "Bot is restarting... See you in a sec!",
+        "Data saved. Restarting... See you in a sec!",
         color=0x2196F3,
     ))
     await bot.close()
+
+# -----------------------------------------------------------------------
+# op save — force-save all game data
+# -----------------------------------------------------------------------
+@bot.command(name="save")
+async def save_cmd(ctx: commands.Context):
+    """Force-save all game data to disk & database."""
+    owner = BOT_OWNER_ID or (bot.owner_id if hasattr(bot, "owner_id") and bot.owner_id else None)
+    if not owner or ctx.author.id != owner:
+        await ctx.send("\u26a0\ufe0f Only the bot owner can use this command.")
+        return
+    save_data(load_data())
+    await ctx.send(embed=branded_embed(
+        "\u2705 Data Saved",
+        "All game data has been force-saved to disk & database.",
+        color=0x4CAF50,
+    ))
 
 # -----------------------------------------------------------------------
 # op help
 # -----------------------------------------------------------------------
 @bot.command(name="help")
 async def help_command(ctx: commands.Context):
-    embed = branded_embed(
-        "\U0001f3f4\u200d\u2620\ufe0f OP Bot \u2014 Command List",
-        "Collect, trade, and battle with One Piece characters! Each pull is a unique card with random race and Devil Fruit.",
+    embed = discord.Embed(
+        title="\U0001f3f4\u200d\u2620\ufe0f OP Bot \u2014 Pirate's Handbook",
+        description="Collect, trade, and battle with One Piece characters! Every pull is a unique card with random race & Devil Fruit.",
+        color=0xFFD700,
     )
     embed.add_field(
         name="\U0001f3b2 Spinning",
         value=(
-            "`op signup` \u2014 sign up to start playing\n"
-            "`op spin` \u2014 spin for a random character (1 spin, 0.5s cooldown)\n"
-            "`op spins` \u2014 check spins left\n"
-            "`op daily` \u2014 claim your daily bonus (spin refill + berries)\n"
-            "`op refreshspins` \u2014 spend 1 Key to refill your spins"
+            "`op spin` \u2014 pull a random character\n"
+            "`op spins` \u2014 check remaining spins\n"
+            "`op daily` \u2014 claim daily bonus\n"
+            "`op refreshspins` \u2014 refill spins (1 Key)"
         ),
-        inline=False,
+        inline=True,
     )
     embed.add_field(
         name="\U0001f392 Collection",
         value=(
-            "`op inventory` / `op inv` \u2014 view your card collection\n"
-            "`op card <character>` \u2014 view a specific card's full stats\n"
-            "`op characters` / `op dex` \u2014 view the full character pool\n"
-            "`op sell <character>` \u2014 sell a character for berries"
+            "`op inv`/`op inventory` \u2014 your cards\n"
+            "`op card <name>` \u2014 view card stats\n"
+            "`op dex`/`op characters` \u2014 character pool\n"
+            "`op sell <name>` \u2014 sell a card"
         ),
-        inline=False,
-    )
-    embed.add_field(
-        name="\U0001f528 Auction House",
-        value=(
-            "`op auction start <character> <starting bid> <minutes>` \u2014 no quotes needed\n"
-            "`op auction bid <id> <amount>` \u2014 bid on an auction\n"
-            "`op auction cancel <id>` \u2014 cancel your own auction (before any bids)\n"
-            "`op auction list` \u2014 view active auctions"
-        ),
-        inline=False,
+        inline=True,
     )
     embed.add_field(
         name="\u2694\ufe0f Duels",
         value=(
-            "`op duel @user [wager]` \u2014 battle another player, optionally for berries\n"
-            "`op team` \u2014 view your duel team\n"
-            "`op team+ <character>` \u2014 add a character to your team\n"
-            "`op team- <character>` \u2014 remove a character from your team"
+            "`op duel @user [bet]` \u2014 battle\n"
+            "`op team` \u2014 view duel team\n"
+            "`op team+ <name>` \u2014 add to team\n"
+            "`op team- <name>` \u2014 remove from team"
         ),
-        inline=False,
+        inline=True,
+    )
+    embed.add_field(
+        name="\U0001f4b0 Economy",
+        value=(
+            "`op shop` \u2014 browse items\n"
+            "`op buy <item>` \u2014 purchase items\n"
+            "`op reroll <#id>` \u2014 re-roll a card's race\n"
+            "`op leaderboard` \u2014 global rankings"
+        ),
+        inline=True,
     )
     embed.add_field(
         name="\U0001f4dc Quests",
-        value="`op quests` \u2014 view today's quests\n`op claim <quest id>` \u2014 claim a finished quest",
-        inline=False,
-    )
-    embed.add_field(
-        name="\U0001f6cd\ufe0f Shop",
         value=(
-            "`op shop` \u2014 view items\n"
-            "`op buy <item>` \u2014 purchase (Luck, Keys, Refill, Team Slots, Race Re-roll, Fruit Ticket)\n"
-            "`op reroll <#id>` \u2014 re-roll a card's race with a token"
+            "`op quests` \u2014 daily quests\n"
+            "`op claim <id>` \u2014 claim reward\n"
+            "`op daily` \u2014 daily bonus\n"
+            "\u200b"
         ),
-        inline=False,
+        inline=True,
     )
     embed.add_field(
-        name="\U0001f4ec Invite",
-        value="`op invite` \u2014 add this bot to your own server!",
-        inline=False,
+        name="\U0001f528 Auction",
+        value=(
+            "`op auction start <c> <b> <min>` \u2014 create\n"
+            "`op auction bid <id> <amt>` \u2014 place bid\n"
+            "`op auction cancel <id>` \u2014 cancel\n"
+            "`op auction list` \u2014 active auctions"
+        ),
+        inline=True,
     )
     embed.add_field(
-        name="\U0001f504 Owner",
-        value="`op restart` \u2014 bot owner only, restarts the bot after an update",
-        inline=False,
+        name="\U0001f4ec Invite & Info",
+        value=(
+            "`op invite` \u2014 add bot to server\n"
+            "`op redeem <code>` \u2014 use promo code\n"
+            "`op signup` \u2014 this menu\n"
+            "\u200b"
+        ),
+        inline=True,
     )
+    embed.add_field(
+        name="\U0001f511 Owner",
+        value=(
+            "`op promocode` \u2014 create promo codes\n"
+            "`op restart` \u2014 restart the bot\n"
+            "`op save` \u2014 force save data\n"
+            "\u200b"
+        ),
+        inline=True,
+    )
+    embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed)
 
 # -----------------------------------------------------------------------
