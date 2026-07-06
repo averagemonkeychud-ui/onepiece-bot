@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+data.json
+auctions.json
+_find_*.py
+*.tmp
+venv/
+.env
