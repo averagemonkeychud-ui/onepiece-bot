@@ -94,11 +94,8 @@ BRAND_COLOR = 0xD32F2F
 FOOTER_TEXT = "OP Bot • One Piece Collector"
 
 PROMO_CODES = {
-    "heresyourshanks": {
-        "character": "Shanks",
-        "rarity": "S",
-        "message": "Here's your Shanks back, pirate! 🏴‍☠️",
-    },
+    # Add promo codes here like:
+    # "summer2026": {"character": "Gol D. Roger", "message": "Summer blessing!"},
 }
 
 SHOP_LUCK_COST = 2_000_000
