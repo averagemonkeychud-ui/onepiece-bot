@@ -90,7 +90,7 @@ def _save_pg(key: str, data: dict) -> None:
 # CONFIG
 # =============================================================================
 TOKEN = os.getenv("DISCORD_TOKEN")
-BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "1523033201872994417"))
+BOT_OWNER_ID = 1523033201872994417
 DATA_FILE = "data.json"
 AUCTION_FILE = "auctions.json"
 
