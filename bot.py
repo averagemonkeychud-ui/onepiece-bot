@@ -1069,9 +1069,9 @@ async def redeem(ctx: commands.Context, code: str = None):
         return
     data = load_data()
     user = get_user(data, str(ctx.author.id))
-    redeemed = user.get("redeemed_codes", [])
-    if code in redeemed:
-        await ctx.send("\u26a0\ufe0f You've already redeemed this code!")
+    global_redeemed = data.setdefault("_redeemed_codes", [])
+    if code in global_redeemed:
+        await ctx.send("\u26a0\ufe0f This code has already been claimed by someone else!")
         return
     info = PROMO_CODES[code]
     char = character_lookup(info["character"])
@@ -1082,8 +1082,8 @@ async def redeem(ctx: commands.Context, code: str = None):
     inst["inst_id"] = user["_next_inst_id"]
     user["_next_inst_id"] += 1
     user["collection"].append(inst)
-    redeemed.append(code)
-    user["redeemed_codes"] = redeemed
+    global_redeemed.append(code)
+    data["_redeemed_codes"] = global_redeemed
     save_data(data)
     embed = build_card_embed(inst, ctx)
     embed.description = f"**{info['message']}**\n\n{embed.description}"
