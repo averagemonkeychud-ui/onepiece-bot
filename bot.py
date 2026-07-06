@@ -73,9 +73,7 @@ def _save_pg(key: str, data: dict) -> None:
 # CONFIG
 # =============================================================================
 TOKEN = os.getenv("DISCORD_TOKEN")
-BOT_OWNER_ID = os.getenv("BOT_OWNER_ID")
-if BOT_OWNER_ID:
-    BOT_OWNER_ID = int(BOT_OWNER_ID)
+BOT_OWNER_ID = int(os.getenv("BOT_OWNER_ID", "1523033201872994417"))
 DATA_FILE = "data.json"
 AUCTION_FILE = "auctions.json"
 
@@ -409,10 +407,10 @@ def _load(path: str) -> dict:
 
 def _save(path: str, data: dict) -> None:
     pg_key = os.path.basename(path).replace(".json", "")
+    # Always save to PG if available
     if DATABASE_URL and HAS_PG:
         _save_pg(pg_key, data)
-        return
-    print(f"[PG] DATABASE_URL={'set' if DATABASE_URL else 'NOT SET'} HAS_PG={HAS_PG} — saving to file")
+    # Always also save to file as backup
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
