@@ -1720,6 +1720,15 @@ async def help_command(ctx: commands.Context):
         inline=True,
     )
     embed.add_field(
+        name="\U0001f6cd\ufe0f Shop",
+        value=(
+            "`op shop` \u2014 tap buttons to buy\n"
+            "`op buy <item>` \u2014 text alternative\n"
+            "`op reroll <#id>` \u2014 apply reroll token"
+        ),
+        inline=True,
+    )
+    embed.add_field(
         name="\u2694\ufe0f Duels",
         value=(
             "`op duel @user [bet]` \u2014 battle\n"
@@ -2580,17 +2589,126 @@ async def claim(ctx: commands.Context, quest_id: str = None):
 # -----------------------------------------------------------------------
 # op shop / op buy
 # -----------------------------------------------------------------------
-@bot.command(name="shop")
-@commands.cooldown(1, 4, commands.BucketType.user)
-async def shop(ctx: commands.Context):
-    embed = branded_embed("\U0001f6cd\ufe0f OP Shop", "Buy with `op buy <item>`.", color=0x00BFA5)
+SHOP_EMOJIS = {
+    "luck": "\U0001f3b0",
+    "key": "\U0001f511",
+    "refill": "\U0001f504",
+    "teamslot": "\u2795",
+    "reroll": "\U0001f3b2",
+    "fruiticket": "\U0001f34e",
+}
+
+def _build_shop_embed(user: dict = None) -> discord.Embed:
+    embed = branded_embed("\U0001f6cd\ufe0f OP Shop", color=0x00BFA5)
+    if user:
+        embed.description = f"\U0001f4b0 Your balance: **{user['berries']:,} Beli**\nBuy any item by tapping a button below!"
+    else:
+        embed.description = "Buy with `op buy <item>` or tap a button below!"
     for key, item in SHOP_ITEMS.items():
+        emoji = SHOP_EMOJIS.get(key, "\u2705")
         embed.add_field(
-            name=f"`{key}` \u2014 {item['label']} \u2014 {item['cost']:,} Beli",
+            name=f"{emoji}  {item['label']}  \u2014  **{item['cost']:,}** Beli",
             value=item["desc"],
             inline=False,
         )
-    await ctx.send(embed=embed)
+    embed.set_footer(text=FOOTER_TEXT)
+    return embed
+
+class ShopView(discord.ui.View):
+    def __init__(self, user_id: int):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+
+        for idx, (key, item) in enumerate(SHOP_ITEMS.items()):
+            emoji = SHOP_EMOJIS.get(key, "\u2705")
+            if key in ("luck", "key", "refill"):
+                style = discord.ButtonStyle.primary
+            elif key in ("teamslot", "reroll"):
+                style = discord.ButtonStyle.secondary
+            else:
+                style = discord.ButtonStyle.success
+            btn = discord.ui.Button(label=f"{item['label']}  \u2014  {item['cost']:,}", style=style, emoji=emoji, row=idx // 3)
+            async def callback(interaction: discord.Interaction, _key=key, _item=item):
+                if interaction.user.id != self.user_id:
+                    await interaction.response.send_message("This isn't your shop!", ephemeral=True)
+                    return
+                await _process_shop_buy(interaction, _key, _item)
+            btn.callback = callback
+            self.add_item(btn)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("This isn't your shop!", ephemeral=True)
+            return False
+        return True
+
+async def _process_shop_buy(interaction: discord.Interaction, item_key: str, item: dict):
+    data = load_data()
+    user = get_user(data, str(interaction.user.id))
+
+    if item_key == "teamslot" and user["team_slots"] >= MAX_TEAM_SIZE_CAP:
+        await interaction.response.send_message(
+            f"\u26a0\ufe0f You're already at the max team size ({MAX_TEAM_SIZE_CAP}).", ephemeral=True)
+        return
+
+    if user["berries"] < item["cost"]:
+        await interaction.response.send_message(
+            f"\u26a0\ufe0f Not enough Beli. **{item['label']}** costs **{item['cost']:,}**, "
+            f"you have **{user['berries']:,}**.", ephemeral=True)
+        return
+
+    user["berries"] -= item["cost"]
+
+    if item_key == "luck":
+        today = datetime.utcnow().date().isoformat()
+        if user.get("luck_date") != today:
+            user["luck_date"] = today
+            user["luck_seconds_today"] = 0
+        seconds = user.get("luck_seconds_today", 0)
+        added = SHOP_LUCK_MINUTES * 60
+        remaining_today = max(0, 7200 - seconds)
+        if added > remaining_today:
+            user["berries"] += item["cost"]
+            save_data(data)
+            await interaction.response.send_message(
+                f"\u26a0\ufe0f 2x Luck is capped at **2 hours** per day. You have **{remaining_today // 60} min** left.", ephemeral=True)
+            return
+        user["luck_seconds_today"] = seconds + added
+        now_ts = datetime.utcnow().timestamp()
+        base = max(now_ts, user.get("luck_until_utc", 0))
+        user["luck_until_utc"] = base + added
+        mins_left = (7200 - (seconds + added)) // 60
+        result = f"2x Luck active for {SHOP_LUCK_MINUTES} minutes! ({mins_left} min remaining today)"
+    elif item_key == "key":
+        user["keys"] += 1
+        result = f"You now have **{user['keys']}** Key(s)."
+    elif item_key == "refill":
+        user["spins"] = MAX_SPINS
+        result = f"Spins refilled to **{MAX_SPINS}**."
+    elif item_key == "teamslot":
+        user["team_slots"] += 1
+        result = f"Team size is now **{user['team_slots']}**."
+    elif item_key == "reroll":
+        user["reroll_tokens"] = user.get("reroll_tokens", 0) + 1
+        result = f"You now have **{user['reroll_tokens']}** Race Re-roll token(s)."
+    elif item_key == "fruiticket":
+        user["fruit_ticket"] = True
+        result = "Your next pull will guarantee a Rare fruit or better!"
+
+    save_data(data)
+    await interaction.response.send_message(embed=branded_embed(
+        f"\u2705 Purchased: {item['label']}",
+        f"{result}\nRemaining balance: **{user['berries']:,} Beli**.",
+        color=0x4CAF50,
+    ), ephemeral=True)
+
+@bot.command(name="shop")
+@commands.cooldown(1, 4, commands.BucketType.user)
+async def shop(ctx: commands.Context):
+    data = load_data()
+    user = get_user(data, str(ctx.author.id))
+    embed = _build_shop_embed(user)
+    await ctx.send(embed=embed, view=ShopView(ctx.author.id))
 
 @bot.command(name="buy")
 @commands.cooldown(1, 4, commands.BucketType.user)
@@ -2624,10 +2742,12 @@ async def buy(ctx: commands.Context, item_key: str = None):
             user["luck_date"] = today
             user["luck_seconds_today"] = 0
         seconds = user.get("luck_seconds_today", 0)
-        max_seconds = 7200  # 2 hours
+        max_seconds = 7200
         added = SHOP_LUCK_MINUTES * 60
         remaining_today = max(0, max_seconds - seconds)
         if added > remaining_today:
+            user["berries"] += item["cost"]
+            save_data(data)
             await ctx.send(embed=branded_embed(
                 "\u26a0\ufe0f Luck Cap Reached",
                 f"2x Luck is capped at **2 hours** per day. You have **{remaining_today // 60} min** left today.",
