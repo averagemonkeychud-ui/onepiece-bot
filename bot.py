@@ -21,6 +21,7 @@ _PG_CONN = None
 def _pg_connect():
     global _PG_CONN
     if not DATABASE_URL or not HAS_PG:
+        print(f"[PG] Skipping PG: DATABASE_URL={'set' if DATABASE_URL else 'NOT SET'}, HAS_PG={HAS_PG}")
         return None
     if _PG_CONN and _PG_CONN.closed == 0:
         return _PG_CONN
@@ -35,8 +36,10 @@ def _pg_connect():
             )
         """)
         cur.close()
+        print("[PG] Connected and table ready")
         return _PG_CONN
-    except Exception:
+    except Exception as e:
+        print(f"[PG] Connection failed: {e}")
         return None
 
 def _load_pg(key: str) -> dict:
@@ -92,13 +95,6 @@ PITY_THRESHOLD = 200
 
 BRAND_COLOR = 0xD32F2F
 FOOTER_TEXT = "OP Bot • One Piece Collector"
-
-PROMO_CODES = {
-    "heresyourshanks": {
-        "character": "Shanks",
-        "message": "Here's your Shanks back, pirate! 🏴‍☠️",
-    },
-}
 
 SHOP_LUCK_COST = 2_000_000
 SHOP_LUCK_MINUTES = 10
@@ -399,6 +395,7 @@ def _load(path: str) -> dict:
         result = _load_pg(pg_key)
         if result is not None:
             return result
+        print(f"[PG] _load_pg returned None for {pg_key} — falling back to file")
     try:
         if not os.path.exists(path):
             return {}
@@ -415,6 +412,7 @@ def _save(path: str, data: dict) -> None:
     if DATABASE_URL and HAS_PG:
         _save_pg(pg_key, data)
         return
+    print(f"[PG] DATABASE_URL={'set' if DATABASE_URL else 'NOT SET'} HAS_PG={HAS_PG} — saving to file")
     tmp = path + ".tmp"
     try:
         with open(tmp, "w", encoding="utf-8") as f:
@@ -458,7 +456,6 @@ def default_user() -> dict:
         "fruit_ticket": False,
         "luck_date": "",
         "luck_seconds_today": 0,
-        "redeemed_codes": [],
         "_next_inst_id": 1,
     }
 
@@ -1009,7 +1006,8 @@ async def on_ready():
         _auction_id_counter = itertools.count(data["_next_id"])
     if not auction_watcher.is_running():
         auction_watcher.start()
-    print(f"Logged in as {bot.user} \u2014 ready to roll!")
+    pg_status = "PostgreSQL ACTIVE" if DATABASE_URL and HAS_PG and _pg_connect() else "File-based storage"
+    print(f"Logged in as {bot.user} \u2014 ready to roll! [{pg_status}]")
 
 # -----------------------------------------------------------------------
 # op signup
@@ -1055,7 +1053,64 @@ async def invite(ctx: commands.Context):
     await ctx.send(embed=embed)
 
 # -----------------------------------------------------------------------
-# op redeem — promo codes
+# op promocode — owner-only GUI to create promo codes
+# -----------------------------------------------------------------------
+class PromoModal(discord.ui.Modal, title="Create Promo Code"):
+    code_name = discord.ui.TextInput(label="Code", placeholder="e.g. summer2026", max_length=30)
+    spins = discord.ui.TextInput(label="Spins reward", placeholder="e.g. 10", max_length=5)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        name = self.code_name.value.lower().strip()
+        if not name:
+            await interaction.response.send_message("\u26a0\ufe0f Code can't be empty.", ephemeral=True)
+            return
+        try:
+            spin_val = int(self.spins.value.strip())
+            if spin_val < 1 or spin_val > 99999:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message("\u26a0\ufe0f Spins must be a number between 1-99999.", ephemeral=True)
+            return
+        data = load_data()
+        promos = data.setdefault("_promo_codes", {})
+        promos[name] = {"spins": spin_val}
+        data["_promo_codes"] = promos
+        save_data(data)
+        await interaction.response.send_message(embed=branded_embed(
+            "\u2705 Promo Code Created",
+            f"**{name}** — {spin_val} spins\nUse `op redeem {name}` to claim.",
+            color=0x4CAF50,
+        ))
+
+class PromoCreateView(discord.ui.View):
+    def __init__(self, owner_id: int):
+        super().__init__(timeout=120)
+        self.owner_id = owner_id
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message("Only the bot owner can create codes.", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="Create Promo Code", style=discord.ButtonStyle.success, emoji="\U0001f3b5")
+    async def create_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(PromoModal())
+
+@bot.command(name="promocode")
+async def promocode_cmd(ctx: commands.Context):
+    owner = BOT_OWNER_ID or getattr(bot, "owner_id", None)
+    if not owner or ctx.author.id != owner:
+        await ctx.send("\u26a0\ufe0f Only the bot owner can use this.")
+        return
+    data = load_data()
+    promos = data.get("_promo_codes", {})
+    desc = "\n".join([f"`{k}` — {v['spins']} spins" for k, v in promos.items()]) if promos else "No promo codes yet."
+    embed = branded_embed("\U0001f3b5 Promo Codes", desc, color=0x9C27B0)
+    await ctx.send(embed=embed, view=PromoCreateView(ctx.author.id))
+
+# -----------------------------------------------------------------------
+# op redeem — claim a promo code
 # -----------------------------------------------------------------------
 @bot.command(name="redeem")
 async def redeem(ctx: commands.Context, code: str = None):
@@ -1063,30 +1118,26 @@ async def redeem(ctx: commands.Context, code: str = None):
         await ctx.send("\u26a0\ufe0f Usage: `op redeem <code>`")
         return
     code = code.lower().strip()
-    if code not in PROMO_CODES:
+    data = load_data()
+    promos = data.get("_promo_codes", {})
+    if code not in promos:
         await ctx.send("\u26a0\ufe0f Invalid promo code.")
         return
-    data = load_data()
     user = get_user(data, str(ctx.author.id))
     global_redeemed = data.setdefault("_redeemed_codes", [])
     if code in global_redeemed:
-        await ctx.send("\u26a0\ufe0f This code has already been claimed by someone else!")
+        await ctx.send("\u26a0\ufe0f This code has already been claimed!")
         return
-    info = PROMO_CODES[code]
-    char = character_lookup(info["character"])
-    if not char:
-        await ctx.send("\u26a0\ufe0f That character doesn't exist in the database.")
-        return
-    inst = create_instance(char)
-    inst["inst_id"] = user["_next_inst_id"]
-    user["_next_inst_id"] += 1
-    user["collection"].append(inst)
+    info = promos[code]
+    user["spins"] = min(MAX_SPINS, user["spins"] + info["spins"])
     global_redeemed.append(code)
     data["_redeemed_codes"] = global_redeemed
     save_data(data)
-    embed = build_card_embed(inst, ctx)
-    embed.description = f"**{info['message']}**\n\n{embed.description}"
-    await ctx.send(embed=embed)
+    await ctx.send(embed=branded_embed(
+        "\U0001f3b5 Code Redeemed!",
+        f"**+{info['spins']} spins** added! You now have **{user['spins']}/{MAX_SPINS}** spins.",
+        color=0x4CAF50,
+    ))
 
 # -----------------------------------------------------------------------
 # op restart — owner-only, kills process (process manager auto-restarts)
