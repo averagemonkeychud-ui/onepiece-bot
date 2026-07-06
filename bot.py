@@ -2021,12 +2021,11 @@ async def card(ctx: commands.Context, *, query: str = None):
             return
     else:
         matches, resolved = collection_search(user, query)
-        if not matches:
-            msg = f"\u26a0\ufe0f You don't own **{query}**." if isinstance(resolved, str) else f"\u26a0\ufe0f You don't own **{query}**. Check `op inv`."
-            await ctx.send(msg)
-            return
         if isinstance(resolved, str) and not matches:
             await ctx.send(resolved)
+            return
+        if not matches:
+            await ctx.send(f"\u26a0\ufe0f You don't own **{query}**. Check `op inv`.")
             return
         if len(matches) == 1:
             target_inst = matches[0]
@@ -2132,7 +2131,7 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
             target = view.selected
             try:
                 await msg.delete()
-            except:
+            except Exception:
                 pass
         elif view.selected:
             target = view.selected
@@ -2587,9 +2586,17 @@ async def buy(ctx: commands.Context, item_key: str = None):
 # op reroll — use a reroll token to randomize a card's race
 # -----------------------------------------------------------------------
 @bot.command(name="reroll")
-async def reroll_card(ctx: commands.Context, card_id: int = None):
+async def reroll_card(ctx: commands.Context, *, card_id: str = None):
     if not card_id:
         await ctx.send("\u26a0\ufe0f Usage: `op reroll <#id>` \u2014 find card IDs with `op inv`.")
+        return
+    q = card_id.strip()
+    if q.startswith("#"):
+        q = q[1:]
+    try:
+        cid = int(q)
+    except ValueError:
+        await ctx.send("\u26a0\ufe0f Invalid card ID. Use `op inv` to see IDs.")
         return
     data = load_data()
     user = get_user(data, str(ctx.author.id))
@@ -2598,11 +2605,11 @@ async def reroll_card(ctx: commands.Context, card_id: int = None):
         return
     target = None
     for inst in user["collection"]:
-        if inst.get("inst_id") == card_id:
+        if inst.get("inst_id") == cid:
             target = inst
             break
     if not target:
-        await ctx.send(f"\u26a0\ufe0f No card found with ID **#{card_id}**.")
+        await ctx.send(f"\u26a0\ufe0f No card found with ID **#{cid}**.")
         return
     new_race = roll_race(target["rarity"])
     old_race = target["race"]
