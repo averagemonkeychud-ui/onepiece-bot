@@ -2822,6 +2822,35 @@ async def card(ctx: commands.Context, *, query: str = None):
     await ctx.send(embed=embed)
 
 # -----------------------------------------------------------------------
+# op p — card preview (simulate a pull)
+# -----------------------------------------------------------------------
+@bot.command(name="p", aliases=["preview", "pr"])
+@commands.cooldown(1, 2, commands.BucketType.user)
+async def preview(ctx: commands.Context, *, name: str = None):
+    if not name:
+        await ctx.send("\u26a0\ufe0f Usage: `op p <character name>`")
+        return
+
+    resolved = resolve_character_name(name)
+    if resolved is None:
+        await ctx.send(f"\u26a0\ufe0f No character found matching **{name}**. Check `op dex`.")
+        return
+    if isinstance(resolved, list):
+        await ctx.send(f"\u26a0\ufe0f Multiple characters match \"{name}\": {', '.join(resolved[:5])}")
+        return
+
+    char = character_lookup(resolved)
+    if not char:
+        await ctx.send(f"\u26a0\ufe0f Could not load **{resolved}**.")
+        return
+
+    inst = create_instance(char)
+    extra = {"spins": "\u2014", "pity": "\u2014"}
+    embed = build_card_embed(inst, ctx, extra)
+    embed.set_footer(text=f"PREVIEW  \u2022  {FOOTER_TEXT}")
+    await ctx.send(embed=embed)
+
+# -----------------------------------------------------------------------
 # op characters / op dex
 # -----------------------------------------------------------------------
 @bot.command(name="characters", aliases=["dex"])
