@@ -109,6 +109,7 @@ DUPLICATE_CONVERT_RATE = 0.5
 DEFAULT_TEAM_SIZE = 4
 MAX_TEAM_SIZE_CAP = 6
 PITY_THRESHOLD = 200
+MAX_BERRIES = 10_000_000
 
 BRAND_COLOR = 0xD32F2F
 FOOTER_TEXT = "OP Bot • One Piece Collector"
@@ -455,7 +456,13 @@ def load_data() -> dict:
     return _load(DATA_FILE)
 
 def save_data(data: dict) -> None:
+    for k, v in data.items():
+        if isinstance(v, dict) and "berries" in v:
+            v["berries"] = min(MAX_BERRIES, max(0, int(v.get("berries", 0))))
     _save(DATA_FILE, data)
+
+def cap_berries(user: dict) -> None:
+    user["berries"] = min(MAX_BERRIES, max(0, int(user.get("berries", 0))))
 
 def load_auctions() -> dict:
     return _load(AUCTION_FILE)
@@ -1491,9 +1498,10 @@ REWARD_TYPES = {
 }
 
 class PromoModal(discord.ui.Modal, title="Create Promo Code"):
-    def __init__(self, reward_type: str):
+    def __init__(self, reward_type: str, scope: str):
         super().__init__()
         self.reward_type = reward_type
+        self.scope = scope
         rt = REWARD_TYPES[reward_type]
         self.code_name = discord.ui.TextInput(label="Code Name", placeholder="e.g. summer2026", max_length=30)
         self.reward_amount = discord.ui.TextInput(
@@ -1518,13 +1526,14 @@ class PromoModal(discord.ui.Modal, title="Create Promo Code"):
             return
         data = load_data()
         promos = data.setdefault("_promo_codes", {})
-        promos[name] = {"type": self.reward_type, "amount": amount}
+        promos[name] = {"type": self.reward_type, "amount": amount, "scope": self.scope}
         data["_promo_codes"] = promos
         save_data(data)
         rt = REWARD_TYPES[self.reward_type]
+        scope_label = "Public (everyone once)" if self.scope == "public" else "1 Player (first claimer)"
         await interaction.response.send_message(embed=branded_embed(
             "\u2705 Promo Code Created",
-            f"**{name}** \u2014 {rt['emoji']} **{amount:,}** {rt['label']}\nTap the **\U0001f3b5 Redeem** button to claim it!",
+            f"**{name}** \u2014 {rt['emoji']} **{amount:,}** {rt['label']}  \u2022  {scope_label}\nTap the **\U0001f3b5 Redeem** button to claim it!",
             color=0x4CAF50,
         ))
 
@@ -1551,7 +1560,25 @@ class PromoCreateView(discord.ui.View):
             if sel_interaction.user.id != self.owner_id:
                 await sel_interaction.response.send_message("Not your panel.", ephemeral=True)
                 return
-            await sel_interaction.response.send_modal(PromoModal(select.values[0]))
+            scope_opts = [
+                discord.SelectOption(label="Public (everyone once)", value="public", emoji="\U0001f30d", description="Every player can use it once"),
+                discord.SelectOption(label="1 Player (first claimer)", value="single", emoji="\U0001f464", description="Only the first person to claim it gets it"),
+            ]
+            scope_select = discord.ui.Select(placeholder="Choose code scope...", options=scope_opts)
+            async def scope_callback(sc_interaction: discord.Interaction):
+                if sc_interaction.user.id != self.owner_id:
+                    await sc_interaction.response.send_message("Not your panel.", ephemeral=True)
+                    return
+                modal = PromoModal(select.values[0], scope_select.values[0])
+                await sc_interaction.response.send_modal(modal)
+            scope_select.callback = scope_callback
+            scope_view = discord.ui.View(timeout=60)
+            scope_view.add_item(scope_select)
+            await sel_interaction.response.edit_original_response(content="Pick who can use this code:", view=scope_view)
+        select.callback = rt_callback
+        view = discord.ui.View(timeout=60)
+        view.add_item(select)
+        await interaction.response.send_message("Pick what the code gives:", view=view, ephemeral=True)
         select.callback = rt_callback
         view = discord.ui.View(timeout=60)
         view.add_item(select)
@@ -1561,15 +1588,14 @@ class PromoCreateView(discord.ui.View):
     async def delete_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         data = load_data()
         promos = data.get("_promo_codes", {})
-        redeemed = set(data.get("_redeemed_codes", []))
-        available = {k: v for k, v in promos.items() if k not in redeemed}
-        if not available:
+        if not promos:
             await interaction.response.send_message("No promo codes available to delete.", ephemeral=True)
             return
         options = []
-        for k, v in available.items():
+        for k, v in promos.items():
             rt = REWARD_TYPES.get(v.get("type", "spins"))
-            label = f"{k} \u2014 {v.get('amount', 0)} {rt['label'] if rt else ''}"
+            scope_label = "PUB" if v.get("scope") == "public" else "1P"
+            label = f"{k} [{scope_label}] \u2014 {v.get('amount', 0)} {rt['label'] if rt else ''}"
             options.append(discord.SelectOption(label=label[:100], value=k))
         select = discord.ui.Select(placeholder="Pick a code to delete...", options=options[:25])
         async def del_callback(sel_interaction: discord.Interaction):
@@ -1600,7 +1626,8 @@ async def promocode_cmd(ctx: commands.Context):
         rt = REWARD_TYPES.get(v.get("type", "spins"))
         emoji = rt["emoji"] if rt else "\U0001f3b5"
         label = rt["label"] if rt else v.get("type", "?")
-        lines.append(f"`{k}` \u2014 {emoji} **{v.get('amount', 0):,}** {label}")
+        scope_label = "\U0001f30d Public" if v.get("scope") == "public" else "\U0001f464 Single"
+        lines.append(f"`{k}` {scope_label} \u2014 {emoji} **{v.get('amount', 0):,}** {label}")
     desc = "\n".join(lines) if lines else "No promo codes yet."
     embed = branded_embed("\U0001f3b5 Promo Codes", desc, color=0x9C27B0)
     await ctx.send(embed=embed, view=PromoCreateView(ctx.author.id))
@@ -1627,11 +1654,23 @@ class RedeemModal(discord.ui.Modal, title="Redeem Promo Code"):
             await interaction.response.send_message("\u26a0\ufe0f Invalid promo code.", ephemeral=True)
             return
         user = get_user(data, str(interaction.user.id))
-        global_redeemed = data.setdefault("_redeemed_codes", [])
-        if code in global_redeemed:
-            await interaction.response.send_message("\u26a0\ufe0f This code has already been claimed!", ephemeral=True)
-            return
         info = promos[code]
+        scope = info.get("scope", "single")
+
+        if scope == "public":
+            redeemed_by = data.setdefault("_redeemed_by_user", {})
+            users_for_code = redeemed_by.setdefault(code, [])
+            if str(interaction.user.id) in users_for_code:
+                await interaction.response.send_message("\u26a0\ufe0f You've already used this code!", ephemeral=True)
+                return
+        else:
+            global_redeemed = data.setdefault("_redeemed_codes", [])
+            if code in global_redeemed:
+                await interaction.response.send_message("\u26a0\ufe0f This code has already been claimed!", ephemeral=True)
+                return
+            global_redeemed.append(code)
+            data["_redeemed_codes"] = global_redeemed
+
         rtype = info.get("type", "spins")
         amount = info.get("amount", 0)
         if rtype == "spins":
@@ -1642,8 +1681,12 @@ class RedeemModal(discord.ui.Modal, title="Redeem Promo Code"):
             user["keys"] += amount
         else:
             user["spins"] = min(MAX_SPINS, user["spins"] + amount)
-        global_redeemed.append(code)
-        data["_redeemed_codes"] = global_redeemed
+
+        if scope == "public":
+            redeemed_by = data.setdefault("_redeemed_by_user", {})
+            redeemed_by.setdefault(code, []).append(str(interaction.user.id))
+            data["_redeemed_by_user"] = redeemed_by
+
         save_data(data)
         rt = REWARD_TYPES.get(rtype)
         emoji = rt["emoji"] if rt else "\U0001f3b5"
@@ -1683,8 +1726,20 @@ async def codes_cmd(ctx: commands.Context):
     """View all available promo codes."""
     data = load_data()
     promos = data.get("_promo_codes", {})
-    redeemed = set(data.get("_redeemed_codes", []))
-    available = {k: v for k, v in promos.items() if k not in redeemed}
+    global_redeemed = set(data.get("_redeemed_codes", []))
+    redeemed_by_user = data.get("_redeemed_by_user", {})
+    uid = str(ctx.author.id)
+
+    available = {}
+    for k, v in promos.items():
+        scope = v.get("scope", "single")
+        if scope == "public":
+            if uid in redeemed_by_user.get(k, []):
+                continue
+        elif k in global_redeemed:
+            continue
+        available[k] = v
+
     if not available:
         embed = discord.Embed(
             title="\U0001f3b5 Promo Codes",
@@ -1699,7 +1754,8 @@ async def codes_cmd(ctx: commands.Context):
         rt = REWARD_TYPES.get(v.get("type", "spins"))
         emoji = rt["emoji"] if rt else "\U0001f3b5"
         label = rt["label"] if rt else v.get("type", "?")
-        desc_lines.append(f"{emoji} **{k}** \u2014 {v.get('amount', 0):,} {label}")
+        scope_label = "\U0001f30d" if v.get("scope") == "public" else "\U0001f464"
+        desc_lines.append(f"{emoji} **{k}** {scope_label} \u2014 {v.get('amount', 0):,} {label}")
     embed = discord.Embed(
         title="\U0001f3b5 Available Promo Codes",
         description="\n".join(desc_lines) + "\n\nTap **Redeem Code** below to claim one!",
