@@ -1431,9 +1431,18 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     msg = str(error)
     if "not signed up" in msg.lower():
         return
-    await ctx.send(f"\u26a0\ufe0f Something went wrong. The error has been logged.")
-    print(f"[ERROR] {ctx.author}: {ctx.message.content}")
-    traceback.print_exc()
+    tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    short = tb[-1800:] if len(tb) > 1800 else tb
+    print(f"[ERROR] {ctx.author} ({ctx.author.id}): {ctx.message.content}")
+    print(tb)
+    try:
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Command Error",
+            f"```\n{short[:1900]}\n```\nSend this to the bot owner to fix it!",
+            color=0xFF5722,
+        ))
+    except Exception:
+        pass
 
 # -----------------------------------------------------------------------
 # op signup
@@ -2229,9 +2238,6 @@ async def spin(ctx: commands.Context):
         await ctx.send(embed=embed, view=view)
     await view.wait()
 
-    data = load_data()
-    user = get_user(data, str(ctx.author.id))
-
     dup_embed = build_card_embed(inst, ctx, {**extra})
     if view.choice == "keep":
         inst["inst_id"] = user["_next_inst_id"]
@@ -2421,8 +2427,9 @@ async def inventory(ctx: commands.Context):
         if overflow:
             embed.add_field(name=f"\u2026 and {overflow} more card(s)", value="Use a more specific search to see them all.", inline=False)
     except Exception as e:
+        tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
         print(f"[INVENTORY ERROR] {ctx.author.id}:")
-        traceback.print_exc()
+        print(tb)
         # auto-repair
         try:
             data = load_data()
@@ -2443,7 +2450,7 @@ async def inventory(ctx: commands.Context):
         await ctx.send(embed=branded_embed(
             "\u26a0\ufe0f Inventory Error",
             "Your collection has an unexpected issue I couldn't auto-fix.\n"
-            f"Error: `{e}`\n\nTry `op fixmycards` for a deeper scan.",
+            f"```\n{tb[-1800:]}\n```\nTry `op fixmycards` for a deeper scan, or send this to the bot owner.",
             color=0xFF5722,
         ))
 
