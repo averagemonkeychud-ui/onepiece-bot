@@ -2078,29 +2078,28 @@ async def spin(ctx: commands.Context):
         await asyncio.sleep(0.3)
     else:
         suspense = await ctx.send("\U0001f3b2 Spinning...")
-        # addictive slot-machine effect: cycle through rarities
-        rarity_order = ["E", "D", "C", "B", "A", "S", "SS", "HDYGT"]
-        for _ in range(5):
-            r = random.choice(rarity_order)
-            ri = RARITIES[r]
+        # addictive slot-machine effect: cycle through random characters, slowing down
+        delays = [0.15, 0.2, 0.3, 0.5, 0.8, 1.2, 1.5]
+        for d in delays:
+            c = random.choice(CHARACTERS)
+            ri = RARITIES[c["rarity"]]
             spin_embed = discord.Embed(
-                title=f"{ri['emoji']}  ???",
-                description=f"**{r}** tier rolling...",
+                title=f"{ri['emoji']}  {c['name']}",
+                description=f"**{c['rarity']}** tier",
                 color=ri["color"],
             )
             try:
                 await suspense.edit(embed=spin_embed)
             except Exception:
                 pass
-            await asyncio.sleep(0.55)
-        # final spin animation
-        ri = RARITIES[random.choice(rarity_order)]
+            await asyncio.sleep(d)
+        # final reveal pause
         await suspense.edit(embed=discord.Embed(
-            title=f"\U0001f3b2  ???",
+            title="\U0001f3b2  ???",
             description="Here it comes...",
-            color=ri["color"],
+            color=0xFFD700,
         ))
-        await asyncio.sleep(max(0.1, 5 - (0.55 * 5 + 0.3)))
+        await asyncio.sleep(0.35)
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
