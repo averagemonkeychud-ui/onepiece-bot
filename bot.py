@@ -2324,6 +2324,46 @@ async def spin(ctx: commands.Context):
         "pity": user["pity_counter"],
     }
 
+    # ── HDYGT: Epic godly reveal ──
+    if rarity == "HDYGT" and not is_duplicate:
+        steps = [
+            ("\U0001f30d  The world trembles...", 1.5),
+            ("\U0001f4ab  A rift opens in the sky...", 1.5),
+            ("\u2728  Divine light pours forth...", 1.5),
+            ("\U0001f451  **THE GODS HAVE SPOKEN**", 2.0),
+        ]
+        for text, delay in steps:
+            try:
+                await suspense.edit(content=text, embed=None)
+            except Exception:
+                pass
+            await asyncio.sleep(delay)
+
+        announcement = discord.Embed(
+            title="\U0001f31f  THE UNIVERSE HAS SPOKEN  \U0001f31f",
+            description=(
+                f"{ctx.author.mention}, you have been blessed with a power beyond imagination.\n\n"
+                f"The **1 in 1,000,000** has chosen you."
+            ),
+            color=0xFFD700,
+        )
+        if character.get("image"):
+            announcement.set_image(url=character["image"])
+        announcement.set_footer(text="\u2728  A legendary tale begins...")
+        try:
+            await suspense.edit(content=None, embed=announcement)
+        except Exception:
+            pass
+        await asyncio.sleep(2.5)
+
+        embed = build_card_embed(inst, ctx, extra)
+        embed.color = 0xFFD700
+        embed.title = f"\U0001f451  {name}  \U0001f451"
+        embed.insert_field_at(0, name="\U0001f31f GODLY PULL", value=f"**1 in 1,000,000** \u2014 worth **{RARITIES['HDYGT']['value']:,} Beli**", inline=False)
+        await ctx.send(embed=embed)
+        _spin_locks.discard(uid)
+        return
+
     if not is_duplicate:
         embed = build_card_embed(inst, ctx, extra)
         await suspense.edit(content=None, embed=embed)
