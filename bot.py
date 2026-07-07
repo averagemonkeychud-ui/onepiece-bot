@@ -958,13 +958,12 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
         color=rarity_info["color"],
     )
 
-    embed.set_author(name=f"{rarity}  —  {inst['race']}", icon_url=RARITY_IMAGES.get(rarity))
+    embed.set_thumbnail(url=RARITY_IMAGES.get(rarity))
+    fruit_img = FRUIT_IMAGES.get(fruit["rarity"]) if fruit else None
+    embed.set_author(name=f"{rarity}  —  {inst['race']}", icon_url=fruit_img)
 
     if char and char.get("image"):
         embed.set_image(url=char["image"])
-
-    if fruit:
-        embed.set_thumbnail(url=FRUIT_IMAGES.get(fruit["rarity"]))
 
     # ── Card body ──
     card = ""
