@@ -2239,6 +2239,9 @@ async def spin(ctx: commands.Context):
 
     # autoroll / fast spin — skip buttons, auto-handle
     if autoroll_active or fast > 0:
+        embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
+        await suspense.edit(content=None, embed=embed)
+        await asyncio.sleep(0.3)
         if RARITY_ORDER.index(rarity) >= RARITY_ORDER.index("A"):
             view_choice = "keep"
         else:
