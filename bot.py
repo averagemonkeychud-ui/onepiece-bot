@@ -2283,8 +2283,24 @@ async def inventory(ctx: commands.Context):
 
         embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
 
+        stats_line = (
+            f"\U0001f4b0 **{user.get('berries', 0):,}**  \u2003 "
+            f"\U0001f3af **{user.get('spins', 0)}/{MAX_SPINS}**  \u2003 "
+            f"\U0001f511 **{user.get('keys', 0)}**  \u2003 "
+            f"\u26a1 **{user.get('fast_spins', 0)}**"
+        )
+        auto = user.get("autoroll_remaining", 0)
+        break_ts = user.get("autoroll_break_until", 0)
+        auto_str = f"{auto // 60}m" if auto else "0m"
+        break_str = ""
+        if break_ts > datetime.utcnow().timestamp():
+            left = int((break_ts - datetime.utcnow().timestamp()) // 60)
+            break_str = f" (break {left}m)"
+        stats_line += f"  \u2003 \U0001f504 {auto_str}{break_str}  \u2003 \u26a1 {user.get('pity_counter', 0)}/{PITY_THRESHOLD}"
+        embed.description = stats_line
+
         field_count = 0
-        max_char_fields = 20
+        max_char_fields = 18
         overflow = 0
         for char_name, instances in sorted_chars:
             char = character_lookup(char_name)
@@ -2315,21 +2331,6 @@ async def inventory(ctx: commands.Context):
 
         if overflow:
             embed.add_field(name=f"\u2026 and {overflow} more card(s)", value="Use a more specific search to see them all.", inline=False)
-
-        embed.add_field(name="\U0001f4b0 Berries", value=f"{user.get('berries', 0):,}", inline=True)
-        embed.add_field(name="\U0001f3af Spins", value=f"{user.get('spins', 0)}/{MAX_SPINS}", inline=True)
-        embed.add_field(name="\U0001f511 Keys", value=str(user.get("keys", 0)), inline=True)
-        embed.add_field(name="\u26a1 Fast Spins", value=str(user.get("fast_spins", 0)), inline=True)
-        auto = user.get("autoroll_remaining", 0)
-        break_ts = user.get("autoroll_break_until", 0)
-        auto_str = f"{auto // 60}m" if auto else "0"
-        break_str = ""
-        if break_ts > datetime.utcnow().timestamp():
-            left = int((break_ts - datetime.utcnow().timestamp()) // 60)
-            break_str = f" (break {left}m)"
-        embed.add_field(name="\U0001f504 Auto Roll", value=auto_str + break_str, inline=True)
-        embed.add_field(name="\u26a1 Pity", value=f"{user.get('pity_counter', 0)}/{PITY_THRESHOLD}", inline=True)
-        await ctx.send(embed=embed)
     except Exception as e:
         print(f"[INVENTORY ERROR] {ctx.author.id}:")
         traceback.print_exc()
