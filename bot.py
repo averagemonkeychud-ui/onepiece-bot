@@ -137,19 +137,19 @@ SPIN_CONSUME_AUTOROLL = 8
 # RACES (randomized per pull, small stat modifiers)
 # =============================================================================
 RACES = {
-    "Human":     {"power": 1.00, "health": 1.00, "speed": 1.00, "emoji": "\U0001f9d1", "desc": "Balanced"},
-    "Fishman":   {"power": 1.10, "health": 1.05, "speed": 1.00, "emoji": "\U0001f41f", "desc": "+10% Power, +5% Health"},
-    "Mink":      {"power": 1.00, "health": 1.00, "speed": 1.15, "emoji": "\U0001f43e", "desc": "+15% Speed"},
-    "Merfolk":   {"power": 0.95, "health": 1.15, "speed": 1.05, "emoji": "\U0001f9dc", "desc": "+15% Health, +5% Speed"},
-    "Giant":     {"power": 1.15, "health": 1.20, "speed": 0.80, "emoji": "\U0001f98d", "desc": "+15% Power, +20% Health, -20% Speed"},
-    "Lunarian":  {"power": 1.10, "health": 1.10, "speed": 1.10, "emoji": "\U0001f525", "desc": "+10% All Stats"},
-    "Skypiean":  {"power": 1.00, "health": 0.95, "speed": 1.10, "emoji": "\u2601\ufe0f", "desc": "+10% Speed, -5% Health"},
-    "Longarm":   {"power": 1.08, "health": 1.00, "speed": 1.02, "emoji": "\U0001f4aa", "desc": "+8% Power"},
-    "Longleg":   {"power": 1.02, "health": 1.00, "speed": 1.08, "emoji": "\U0001f9b5", "desc": "+8% Speed"},
-    "Dwarf":     {"power": 0.90, "health": 0.85, "speed": 1.20, "emoji": "\U0001f4cf", "desc": "+20% Speed, -15% Health, -10% Power"},
-    "Buccaneer": {"power": 1.12, "health": 1.15, "speed": 0.90, "emoji": "\u2620\ufe0f", "desc": "+12% Power, +15% Health, -10% Speed"},
-    "Kuja":      {"power": 1.05, "health": 0.90, "speed": 1.10, "emoji": "\U0001f3f9", "desc": "+5% Power, +10% Speed, -10% Health"},
-    "Cyborg":    {"power": 1.10, "health": 1.10, "speed": 0.95, "emoji": "\u2699\ufe0f", "desc": "+10% Power, +10% Health, -5% Speed"},
+    "Human":     {"power": 1.00, "health": 1.00, "speed": 1.00, "emoji": "\U0001f9d1", "desc": "Balanced", "value": 1.00},
+    "Fishman":   {"power": 1.10, "health": 1.05, "speed": 1.00, "emoji": "\U0001f41f", "desc": "+10% Power, +5% Health", "value": 1.25},
+    "Mink":      {"power": 1.00, "health": 1.00, "speed": 1.15, "emoji": "\U0001f43e", "desc": "+15% Speed", "value": 1.10},
+    "Merfolk":   {"power": 0.95, "health": 1.15, "speed": 1.05, "emoji": "\U0001f9dc", "desc": "+15% Health, +5% Speed", "value": 1.10},
+    "Giant":     {"power": 1.15, "health": 1.20, "speed": 0.80, "emoji": "\U0001f98d", "desc": "+15% Power, +20% Health, -20% Speed", "value": 1.15},
+    "Lunarian":  {"power": 1.10, "health": 1.10, "speed": 1.10, "emoji": "\U0001f525", "desc": "+10% All Stats", "value": 1.50},
+    "Skypiean":  {"power": 1.00, "health": 0.95, "speed": 1.10, "emoji": "\u2601\ufe0f", "desc": "+10% Speed, -5% Health", "value": 0.95},
+    "Longarm":   {"power": 1.08, "health": 1.00, "speed": 1.02, "emoji": "\U0001f4aa", "desc": "+8% Power", "value": 1.10},
+    "Longleg":   {"power": 1.02, "health": 1.00, "speed": 1.08, "emoji": "\U0001f9b5", "desc": "+8% Speed", "value": 1.10},
+    "Dwarf":     {"power": 0.90, "health": 0.85, "speed": 1.20, "emoji": "\U0001f4cf", "desc": "+20% Speed, -15% Health, -10% Power", "value": 0.90},
+    "Buccaneer": {"power": 1.12, "health": 1.15, "speed": 0.90, "emoji": "\u2620\ufe0f", "desc": "+12% Power, +15% Health, -10% Speed", "value": 1.30},
+    "Kuja":      {"power": 1.05, "health": 0.90, "speed": 1.10, "emoji": "\U0001f3f9", "desc": "+5% Power, +10% Speed, -10% Health", "value": 1.00},
+    "Cyborg":    {"power": 1.10, "health": 1.10, "speed": 0.95, "emoji": "\u2699\ufe0f", "desc": "+10% Power, +10% Health, -5% Speed", "value": 1.15},
 }
 
 RACE_NAMES = list(RACES.keys())
@@ -180,11 +180,11 @@ for rn, tier in RACE_TIERS.items():
 # =============================================================================
 FRUIT_DROP_CHANCE = 0.20
 FRUIT_RARITIES = {
-    "Common":    {"weight": 45, "color": 0xB0BEC5, "emoji": "\U0001f34e"},
-    "Uncommon":  {"weight": 28, "color": 0x4CAF50, "emoji": "\U0001f34b"},
-    "Rare":      {"weight": 18, "color": 0x2196F3, "emoji": "\U0001f34a"},
-    "Legendary": {"weight":  7, "color": 0xFFC107, "emoji": "\U0001f34c"},
-    "Mythical":  {"weight":  2, "color": 0xE040FB, "emoji": "\U0001f32a\ufe0f"},
+    "Common":    {"weight": 45, "color": 0xB0BEC5, "emoji": "\U0001f34e", "value": 1.00},
+    "Uncommon":  {"weight": 28, "color": 0x4CAF50, "emoji": "\U0001f34b", "value": 1.10},
+    "Rare":      {"weight": 18, "color": 0x2196F3, "emoji": "\U0001f34a", "value": 1.25},
+    "Legendary": {"weight":  7, "color": 0xFFC107, "emoji": "\U0001f34c", "value": 1.50},
+    "Mythical":  {"weight":  2, "color": 0xE040FB, "emoji": "\U0001f32a\ufe0f", "value": 2.00},
 }
 
 FRUITS = [
@@ -885,6 +885,15 @@ def branded_embed(title: str, description: str = "", color: int = BRAND_COLOR) -
 
 def instance_total_stat(inst: dict) -> int:
     return inst["power"] + inst["health"] + inst["speed"]
+
+def instance_payout(inst: dict, rarity: str = None) -> int:
+    if rarity is None:
+        rarity = inst.get("rarity", "C")
+    base = RARITIES[rarity]["value"]
+    race = RACES.get(inst.get("race", "Human"), RACES["Human"]).get("value", 1.0)
+    fruit = inst.get("fruit")
+    fruit_val = FRUIT_RARITIES.get(fruit["rarity"], {}).get("value", 0.75) if fruit else 0.75
+    return round(base * DUPLICATE_CONVERT_RATE * race * fruit_val)
 
 # ── Max stat reference per rarity for stat bars ──
 _STAT_MAX = {
@@ -2222,7 +2231,7 @@ async def spin(ctx: commands.Context):
         user["berries"] += bonus_beli
 
     is_duplicate = any(i["character"] == name for i in user["collection"])
-    duplicate_payout = int(RARITIES[rarity]["value"] * DUPLICATE_CONVERT_RATE) if is_duplicate else 0
+    duplicate_payout = instance_payout(inst, rarity) if is_duplicate else 0
 
     if not is_duplicate:
         inst["inst_id"] = user["_next_inst_id"]
@@ -2687,7 +2696,7 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
         return
 
     char = character_lookup(target["character"])
-    value = RARITIES[char["rarity"]]["value"] // 2
+    value = instance_payout(target, char["rarity"])
 
     user["collection"] = [inst for inst in user["collection"] if inst["inst_id"] != target["inst_id"]]
     if target["inst_id"] in user["team"]:
@@ -2696,9 +2705,14 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
     bump_quest_progress(user, "sell_count")
     save_data(data)
 
+    race_data = RACES.get(target.get("race", "Human"), RACES["Human"])
+    fruit_name = target.get("fruit", {}).get("name", "") if target.get("fruit") else ""
+    fruit_label = f" + {target['fruit']['rarity']} Fruit" if fruit_name else " (No Fruit)"
+    race_label = f"x{race_data['value']:.2f}" if race_data['value'] != 1.0 else ""
     await ctx.send(embed=branded_embed(
         "\U0001f4b0 Sold!",
-        f"You sold **{target['character']}** (race: {target['race']}) for **{value:,} Beli**.\n"
+        f"You sold **{target['character']}** — {target['race']}{race_label}{fruit_label}\n"
+        f"Value: **{value:,} Beli**\n"
         f"New balance: {user['berries']:,} Beli.",
         color=0x4CAF50,
     ))
