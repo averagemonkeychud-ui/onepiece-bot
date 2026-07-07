@@ -131,56 +131,6 @@ SPIN_CONSUME_AUTOROLL = 8
 # ASSET IMAGES (PNG URLs for icons used throughout the bot)
 # =============================================================================
 
-RARITY_IMAGES = {
-    "E":     "https://gallery.yopriceville.com/downloadfullsize/send/13982",
-    "D":     "https://gallery.yopriceville.com/downloadfullsize/send/25091",
-    "C":     "https://gallery.yopriceville.com/downloadfullsize/send/31222",
-    "B":     "https://gallery.yopriceville.com/downloadfullsize/send/27290",
-    "A":     "https://gallery.yopriceville.com/downloadfullsize/send/21617",
-    "S":     "https://gallery.yopriceville.com/downloadfullsize/send/12483",
-    "SS":    "https://png.pngtree.com/png-clipart/20240606/original/pngtree-golden-sword-logo-png-image_15258578.png",
-    "HDYGT": "https://static.vecteezy.com/system/resources/thumbnails/060/280/583/small_2x/question-mark-question-mark-icon-pixel-art-style-png.png",
-}
-
-SHOP_IMAGES = {
-    "luck":     "https://www.nicepng.com/png/full/153-1533439_wanted-pics-of-4-leaf-clovers-successful-pictures.png",
-    "key":      "https://png.pngtree.com/png-vector/20250709/ourmid/pngtree-ornate-brass-key-png-image_16731146.webp",
-    "refill":   "https://preview.redd.it/where-can-i-get-all-these-icons-that-almost-every-roblox-v0-3xxbtl8zzxgb1.png?width=420&format=png&auto=webp&s=42a7876c1602ebfff91f17075bc66c5b87823512",
-    "teamslot": "https://cdn-icons-png.magnific.com/256/7499/7499986.png?semt=ais_white_label",
-    "fastspins":"https://images.vexels.com/media/users/3/271145/isolated/preview/b269dc25aafe3805472236a2d70a0b7f-thunderbolt-minimalist-icon.png",
-    "autoroll": "https://preview.redd.it/where-can-i-get-all-these-icons-that-almost-every-roblox-v0-3xxbtl8zzxgb1.png?width=420&format=png&auto=webp&s=42a7876c1602ebfff91f17075bc66c5b87823512",
-}
-
-FRUIT_IMAGES = {
-    "Common":    "https://static.vecteezy.com/system/resources/thumbnails/067/688/311/small/vintage-apple-fruit-for-nostalgic-aesthetics-retro-illustration-isolated-on-transparent-background-png.png",
-    "Uncommon":  "https://freepngimg.com/thumb/lemon/9-2-lemon-png.png",
-    "Rare":      "https://freepngimg.com/save/14495-orange-png-clipart/744x744",
-    "Legendary": "https://gallery.yopriceville.com/downloadfullsize/send/27379",
-    "Mythical":  "https://static.vecteezy.com/system/resources/thumbnails/072/759/192/small/isolated-tornado-storm-weather-funnel-cloud-natural-disaster-twister-cyclone-vortex-hurricane-danger-100char-on-transparent-background-png.png",
-}
-
-STAT_IMAGES = {
-    "power": "https://www.pngkey.com/png/full/57-573907_crossed-swords-nightmarionne-gif.png",
-    "health":"https://www.onlygfx.com/wp-content/uploads/2021/02/6-pixel-heart-4.png",
-    "speed": "https://static.vecteezy.com/system/resources/thumbnails/055/134/004/small/3d-wind-icon-illustration-render-png.png",
-    "total": "https://freepngimg.com/save/132732-antique-map-free-transparent-image-hd/1280x784",
-}
-
-RACE_IMAGES = {
-    "Human":    "https://www.pngkey.com/png/full/12-124372_people-human-clipart-transparent-background.png",
-    "Fishman":  "https://png.pngtree.com/png-clipart/20241119/original/pngtree-tilapia-fish-4k-transparent-background-png-image_17267081.png",
-    "Mink":     "https://images.squarespace-cdn.com/content/v1/5e77a95845630059ae9de949/1664562080769-9YZ4KYGWDUY68W0ZKUNZ/pawprint.png?format=1500w",
-    "Merfolk":  "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS9v0naI49BTTKjgd5_ldTqPYHIrJNC33RHhItUX3WZqw&s=10",
-    "Giant":    "https://static.vecteezy.com/system/resources/thumbnails/065/944/629/small/gorilla-ape-primate-on-transparent-background-png.png",
-    "Lunarian": "https://png.pngtree.com/png-vector/20240827/ourmid/pngtree-realistic-3d-fire-flame-effect-for-designs-png-image_13631567.png",
-    "Skypiean": "https://png.pngtree.com/png-clipart/20240418/original/pngtree-realistic-cloud-or-clouds-element-png-image_14886890.png",
-    "Longarm":  "https://static.vecteezy.com/system/resources/thumbnails/047/650/575/small/male-biceps-muscles-flexing-biceps-strong-arm-flat-illustration-style-free-png.png",
-    "Longleg":  "https://static.thenounproject.com/png/61527-200.png",
-    "Dwarf":    "https://static.vecteezy.com/system/resources/thumbnails/070/080/381/small_2x/watercolor-yellow-ruler-free-png.png",
-    "Buccaneer":"https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/1bff7c4d-7f69-4106-9e6d-393c179ea4ff/depvjhr-cc9121f8-e1b9-4b8a-8699-b89f8136d178.png/v1/fill/w_1280,h_1707/skull_png_by_devianstock_depvjhr-fullview.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7ImhlaWdodCI6Ijw9MTcwNyIsInBhdGgiOiIvZi8xYmZmN2M0ZC03ZjY5LTQxMDYtOWU2ZC0zOTNjMTc5ZWE0ZmYvZGVwdmpoci1jYzkxMjFmOC1lMWI5LTRiOGEtODY5OS1iODlmODEzNmQxNzgucG5nIiwid2lkdGgiOiI8PTEyODAifV1dLCJhdWQiOlsidXJuOnNlcnZpY2U6aW1hZ2Uub3BlcmF0aW9ucyJdfQ.2baBmaP2Ti0SIFJvY_9ZthTNhRCpsxl7r-_oN-IzaY0",
-    "Kuja":     "https://png.pngtree.com/png-clipart/20220705/ourmid/pngtree-bow-and-arrow-cartoon-png-image_5683004.png",
-    "Cyborg":   "https://png.pngtree.com/png-vector/20250905/ourmid/pngtree-metallic-gear-settings-icon-silver-gray-polished-high-resolution-vector-symbol-png-image_17370272.webp",
-}
 
 # =============================================================================
 # RACES (randomized per pull, small stat modifiers)
@@ -923,7 +873,7 @@ def branded_embed(title: str, description: str = "", color: int = BRAND_COLOR) -
         description=description,
         color=color,
     )
-    embed.set_footer(text=FOOTER_TEXT, icon_url="https://cdn.discordapp.com/emojis/1266531045818306590.png")
+    embed.set_footer(text=FOOTER_TEXT)
     return embed
 
 def instance_total_stat(inst: dict) -> int:
@@ -958,9 +908,7 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
         color=rarity_info["color"],
     )
 
-    embed.set_thumbnail(url=RARITY_IMAGES.get(rarity))
-    fruit_img = FRUIT_IMAGES.get(fruit["rarity"]) if fruit else None
-    embed.set_author(name=f"{rarity}  —  {inst['race']}", icon_url=fruit_img)
+    embed.set_author(name=f"{rarity}  —  {inst['race']}")
 
     if char and char.get("image"):
         embed.set_image(url=char["image"])
@@ -1243,8 +1191,6 @@ def repair_user_data(user: dict) -> list:
 
     # 1. ensure all top-level fields exist with valid types
     EXPECTED_FIELDS = {
-        "collection": (list, []),
-        "team": (list, []),
         "spins": ((int, float), MAX_SPINS),
         "berries": ((int, float), 0),
         "keys": ((int, float), 0),
@@ -1269,21 +1215,28 @@ def repair_user_data(user: dict) -> list:
             fixes.append(f"added missing '{field}'")
         elif not isinstance(user[field], typ):
             try:
-                user[field] = typ(user[field]) if typ is not tuple else default
-                fixes.append(f"fixed '{field}' type ({type(user[field]).__name__} → {typ.__name__ if typ is not tuple else 'list'})")
+                if isinstance(typ, tuple):
+                    for t in typ:
+                        if isinstance(user[field], t):
+                            break
+                    else:
+                        user[field] = default
+                else:
+                    user[field] = typ(user[field])
+                fixes.append(f"fixed '{field}' type ({type(user[field]).__name__})")
             except (ValueError, TypeError):
                 user[field] = default
                 fixes.append(f"reset '{field}' (unconvertable {type(user[field]).__name__})")
 
-    # 2. ensure collection/team are lists
-    if not isinstance(user.get("collection"), list):
-        old = user.get("collection")
-        user["collection"] = list(old) if isinstance(old, (list, tuple)) else []
-        fixes.append(f"converted collection from {type(old).__name__}")
-    if not isinstance(user.get("team"), list):
-        old = user.get("team")
-        user["team"] = list(old) if isinstance(old, (list, tuple)) else []
-        fixes.append(f"converted team from {type(old).__name__}")
+    # 2. ensure collection/team are lists (handled separately to avoid type coercion)
+    for coll_key in ("collection", "team"):
+        val = user.get(coll_key)
+        if not isinstance(val, list):
+            if isinstance(val, (list, tuple)):
+                user[coll_key] = list(val)
+            else:
+                user[coll_key] = []
+            fixes.append(f"fixed '{coll_key}' (was {type(val).__name__})")
 
     # 3. validate every card
     valid_races = set(RACES.keys())
@@ -1421,7 +1374,7 @@ class WelcomeView(discord.ui.View):
 
 @bot.before_invoke
 async def ensure_signed_up(ctx: commands.Context):
-    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes", "shop", "characters", "fixmycards"):
+    if ctx.command.name in ("signup", "help", "invite", "status", "odds", "fixdb", "codes", "shop", "characters", "fixmycards", "resetuser", "restart", "save", "promocode"):
         return
     data = load_data()
     user = data.get(str(ctx.author.id))
@@ -1508,7 +1461,6 @@ async def signup(ctx: commands.Context):
         value=f"\U0001f3b2 **{MAX_SPINS}** Free Spins\n\U0001f4b0 **20,000** Beli\n\U0001f3af Instant Access to All Commands",
         inline=False,
     )
-    embed.set_thumbnail(url="https://i.imgur.com/Y7v1h9M.png")
     embed.set_footer(text=FOOTER_TEXT)
     await ctx.send(embed=embed, view=SignupView())
 
@@ -1772,6 +1724,7 @@ async def restart_bot(ctx: commands.Context):
         color=0x2196F3,
     ))
     await bot.close()
+    os._exit(0)
 
 # -----------------------------------------------------------------------
 # op save — force-save all game data
@@ -2031,7 +1984,8 @@ async def help_command(ctx: commands.Context):
                 "`op restart` \u2014 restart the bot\n"
                 "`op save` \u2014 force save data\n"
                 "`op status` \u2014 check DB status\n"
-                "`op fixdb` \u2014 reconnect to PostgreSQL"
+                "`op fixdb` \u2014 reconnect to PostgreSQL\n"
+                "`op resetuser` \u2014 reset a player's data"
             ),
             inline=True,
         )
@@ -2321,6 +2275,9 @@ async def inventory(ctx: commands.Context):
 
         embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
 
+        field_count = 0
+        max_char_fields = 20
+        overflow = 0
         for char_name, instances in sorted_chars:
             char = character_lookup(char_name)
             if not char:
@@ -2338,11 +2295,18 @@ async def inventory(ctx: commands.Context):
                     continue
             if not lines:
                 continue
+            if field_count >= max_char_fields:
+                overflow += len(instances)
+                continue
             embed.add_field(
                 name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
                 value="\n".join(lines[:10]) + ("\n*+more...*" if len(lines) > 10 else ""),
                 inline=False,
             )
+            field_count += 1
+
+        if overflow:
+            embed.add_field(name=f"\u2026 and {overflow} more card(s)", value="Use a more specific search to see them all.", inline=False)
 
         embed.add_field(name="\U0001f4b0 Berries", value=f"{user.get('berries', 0):,}", inline=True)
         embed.add_field(name="\U0001f3af Spins", value=f"{user.get('spins', 0)}/{MAX_SPINS}", inline=True)
@@ -2930,7 +2894,6 @@ SHOP_EMOJIS = {
 
 def _build_shop_embed(user: dict = None) -> discord.Embed:
     embed = branded_embed("\U0001f6cd\ufe0f OP Shop", color=0x00BFA5)
-    embed.set_thumbnail(url=SHOP_IMAGES.get("luck"))
     if user:
         embed.description = f"\U0001f4b0 Your balance: **{user['berries']:,} Beli**\nBuy any item by tapping a button below!"
     else:
