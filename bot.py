@@ -1961,99 +1961,168 @@ async def odds_cmd(ctx: commands.Context):
 # -----------------------------------------------------------------------
 # op help
 # -----------------------------------------------------------------------
+HELP_CATEGORIES = {
+    "overview": {
+        "emoji": "\U0001f3f4\u200d\u2620\ufe0f",
+        "label": "Overview",
+        "title": "Overview",
+        "desc": "Welcome to OP Bot! Select a category below to explore commands.",
+        "commands": [],
+    },
+    "spinning": {
+        "emoji": "\U0001f3b2",
+        "label": "Spinning",
+        "title": "Spinning",
+        "desc": "Each spin gives a unique character with random race & Devil Fruit. Use `op odds` to check rarity weights.",
+        "commands": [
+            ("op spin", "Pull a random character"),
+            ("op spins", "Check remaining spins"),
+            ("op daily", "Claim daily bonus spins & berries"),
+            ("op odds", "View pull rates & rarity chances"),
+            ("op refreshspins", "Refill spins (costs 1 Key)"),
+        ],
+    },
+    "collection": {
+        "emoji": "\U0001f4d2",
+        "label": "Collection",
+        "title": "Collection",
+        "desc": "Browse, inspect, sell, and manage your card collection.",
+        "commands": [
+            ("op inv / op inventory", "View your card collection"),
+            ("op card <name>", "View a card's full stats"),
+            ("op dex / op characters", "Browse the character pool"),
+            ("op sell <name>", "Sell a duplicate card"),
+            ("op fixmycards", "Repair corrupted card data"),
+        ],
+    },
+    "shop": {
+        "emoji": "\U0001f6cd\ufe0f",
+        "label": "Shop & Economy",
+        "title": "Shop & Economy",
+        "desc": "Spend berries on items and climb the global rankings.",
+        "commands": [
+            ("op shop", "Open the item shop (button menu)"),
+            ("op buy <item>", "Buy an item by name"),
+            ("op leaderboard", "View global berry rankings"),
+        ],
+    },
+    "duels": {
+        "emoji": "\u2694\ufe0f",
+        "label": "Duels",
+        "title": "Duels",
+        "desc": "Challenge other players to 1v1 character battles with wagers.",
+        "commands": [
+            ("op duel @user [bet]", "Challenge someone to a duel"),
+            ("op team", "View your duel team"),
+            ("op team+ <name>", "Add a character to your team"),
+            ("op team- <name>", "Remove a character from your team"),
+        ],
+    },
+    "quests": {
+        "emoji": "\U0001f4dc",
+        "label": "Quests",
+        "title": "Quests",
+        "desc": "Complete daily quests for bonus berries and rewards.",
+        "commands": [
+            ("op quests", "View active daily quests"),
+            ("op claim <id>", "Claim a completed quest reward"),
+        ],
+    },
+    "auction": {
+        "emoji": "\U0001f528",
+        "label": "Auction",
+        "title": "Auction",
+        "desc": "Trade cards with other players through public auctions.",
+        "commands": [
+            ("op auction start <c> <b> <min>", "Create a new auction"),
+            ("op auction bid <id> <amt>", "Place a bid on an auction"),
+            ("op auction cancel <id>", "Cancel your own auction"),
+            ("op auction list", "View all active auctions"),
+        ],
+    },
+    "promos": {
+        "emoji": "\U0001f3b5",
+        "label": "Promos & Info",
+        "title": "Promos & Info",
+        "desc": "Promo codes, bot info, and getting started.",
+        "commands": [
+            ("op codes", "View available promo codes"),
+            ("op redeem", "Redeem a promo code"),
+            ("op invite", "Add this bot to another server"),
+            ("op signup", "Show this help menu"),
+        ],
+    },
+    "owner": {
+        "emoji": "\U0001f511",
+        "label": "Owner",
+        "title": "Owner",
+        "desc": "Bot owner utilities and administration.",
+        "commands": [
+            ("op promocode", "Create or delete promo codes"),
+            ("op restart", "Restart the bot"),
+            ("op save", "Force-save all data"),
+            ("op status", "Check database connection status"),
+            ("op fixdb", "Reconnect to PostgreSQL"),
+            ("op resetuser", "Reset a player's data"),
+        ],
+    },
+}
+
+_SEP = "\u2500" * 42
+
+def _help_build_category(key: str) -> str:
+    cat = HELP_CATEGORIES[key]
+    if not cat["commands"]:
+        return f"{_SEP}\n{cat['desc']}\n{_SEP}"
+    lines = [cat["title"], _SEP]
+    for cmd, desc in cat["commands"]:
+        display = f"`{cmd}`"
+        dots = "\u00b7" * max(2, 38 - len(display))
+        lines.append(f"{display} {dots} {desc}")
+    lines.append(_SEP)
+    lines.append(cat["desc"])
+    return "\n".join(lines)
+
+
+class HelpSelect(discord.ui.Select):
+    def __init__(self, ctx: commands.Context):
+        self.ctx = ctx
+        options = []
+        for key, cat in HELP_CATEGORIES.items():
+            if key == "owner" and ctx.author.id != BOT_OWNER_ID:
+                continue
+            options.append(
+                discord.SelectOption(label=cat["label"], emoji=cat["emoji"], value=key)
+            )
+        super().__init__(placeholder="Choose a category...", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        key = self.values[0]
+        embed = discord.Embed(
+            title="\U0001f3f4\u200d\u2620\ufe0f  OP Bot \u2014 Pirate's Handbook",
+            description=_help_build_category(key),
+            color=0xFFD700,
+        )
+        embed.set_footer(text=FOOTER_TEXT)
+        await interaction.response.edit_message(embed=embed)
+
+
+class HelpView(discord.ui.View):
+    def __init__(self, ctx: commands.Context):
+        super().__init__(timeout=120)
+        self.add_item(HelpSelect(ctx))
+
+
 @bot.command(name="help")
 @commands.cooldown(1, 4, commands.BucketType.user)
 async def help_command(ctx: commands.Context):
     embed = discord.Embed(
-        title="\U0001f3f4\u200d\u2620\ufe0f OP Bot \u2014 Pirate's Handbook",
-        description="Collect, trade, and battle with One Piece characters! Every pull is a unique card with random race & Devil Fruit.",
+        title="\U0001f3f4\u200d\u2620\ufe0f  OP Bot \u2014 Pirate's Handbook",
+        description=_help_build_category("overview"),
         color=0xFFD700,
     )
-    embed.add_field(
-        name="\U0001f3b2 Spinning",
-        value=(
-            "`op spin` \u2014 pull a random character\n"
-            "`op spins` \u2014 check remaining spins\n"
-            "`op daily` \u2014 claim daily bonus\n"
-            "`op odds` \u2014 view pull rates & chances\n"
-            "`op refreshspins` \u2014 refill spins (1 Key)"
-        ),
-        inline=False,
-    )
-    embed.add_field(
-        name="\U0001f392 Collection",
-        value=(
-            "`op inv`/`op inventory` \u2014 your cards\n"
-            "`op card <name>` \u2014 view card stats\n"
-            "`op dex`/`op characters` \u2014 character pool\n"
-            "`op sell <name>` \u2014 sell a card\n"
-            "`op fixmycards` \u2014 repair corrupted data"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\U0001f6cd\ufe0f Shop & Economy",
-        value=(
-            "`op shop` \u2014 tap buttons to buy\n"
-            "`op buy <item>` \u2014 text alternative\n"
-            "`op leaderboard` \u2014 global rankings"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\u2694\ufe0f Duels",
-        value=(
-            "`op duel @user [bet]` \u2014 battle\n"
-            "`op team` \u2014 view duel team\n"
-            "`op team+ <name>` \u2014 add to team\n"
-            "`op team- <name>` \u2014 remove from team"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\U0001f4dc Quests",
-        value=(
-            "`op quests` \u2014 daily quests\n"
-            "`op claim <id>` \u2014 claim reward\n"
-            "\u200b"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\U0001f528 Auction",
-        value=(
-            "`op auction start <c> <b> <min>` \u2014 create\n"
-            "`op auction bid <id> <amt>` \u2014 place bid\n"
-            "`op auction cancel <id>` \u2014 cancel\n"
-            "`op auction list` \u2014 active auctions"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\U0001f3b5 Promos & Info",
-        value=(
-            "`op codes` \u2014 view available codes\n"
-            "`op redeem` \u2014 enter a promo code\n"
-            "`op invite` \u2014 add bot to server\n"
-            "`op signup` \u2014 this menu"
-        ),
-        inline=True,
-    )
-    if ctx.author.id == BOT_OWNER_ID:
-        embed.add_field(
-            name="\U0001f511 Owner",
-            value=(
-                "`op promocode` \u2014 create/delete codes\n"
-                "`op restart` \u2014 restart the bot\n"
-                "`op save` \u2014 force save data\n"
-                "`op status` \u2014 check DB status\n"
-                "`op fixdb` \u2014 reconnect to PostgreSQL\n"
-                "`op resetuser` \u2014 reset a player's data"
-            ),
-            inline=True,
-        )
     embed.set_footer(text=FOOTER_TEXT)
-    await ctx.send(embed=embed)
+    await ctx.send(embed=embed, view=HelpView(ctx))
 
 # in-memory spam tracker: user_id -> [timestamp, ...]
 _spam_tracker: dict = {}
