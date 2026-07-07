@@ -2178,6 +2178,11 @@ async def spin(ctx: commands.Context):
         await ctx.send(embed=dup_embed)
     _spin_locks.discard(uid)
 
+@spin.error
+async def spin_error(ctx: commands.Context, error: Exception):
+    _spin_locks.discard(ctx.author.id)
+    raise error
+
 # -----------------------------------------------------------------------
 # op refreshspins
 # -----------------------------------------------------------------------
@@ -2307,7 +2312,8 @@ async def inventory(ctx: commands.Context):
         embed.description = stats_line
 
         field_count = 0
-        max_char_fields = 18
+        max_char_fields = 12
+        max_lines = 5
         overflow = 0
         for char_name, instances in sorted_chars:
             char = character_lookup(char_name)
@@ -2329,9 +2335,14 @@ async def inventory(ctx: commands.Context):
             if field_count >= max_char_fields:
                 overflow += len(instances)
                 continue
+            shown = lines[:max_lines]
+            val = "\n".join(shown)
+            remaining = len(lines) - max_lines
+            if remaining > 0:
+                val += f"\n*+{remaining} more*"
             embed.add_field(
                 name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
-                value="\n".join(lines[:10]) + ("\n*+more...*" if len(lines) > 10 else ""),
+                value=val,
                 inline=False,
             )
             field_count += 1
