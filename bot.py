@@ -2116,7 +2116,11 @@ async def spin(ctx: commands.Context):
             ))
             return
         _stuck_warnings[uid] = _stuck_warnings.get(uid, 0) + 1
-        _spin_locks.discard(uid)
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Already Spinning",
+            f"{ctx.author.mention}, you already have a spin in progress! Wait for it to finish.",
+            color=0xFF9800,
+        ))
         return
     _stuck_warnings[uid] = 0
     _spin_locks.add(uid)
