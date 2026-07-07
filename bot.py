@@ -2068,23 +2068,6 @@ async def spin(ctx: commands.Context):
         user["fast_spins"] = fast - 1
         suspense = await ctx.send("\U0001f3b2 Fast spin...")
         await asyncio.sleep(0.3)
-    else:
-        suspense = await ctx.send("\U0001f3b2 Spinning...")
-        # gacha slot-machine: 1 card at a time, fast → slow
-        delays = [0.12, 0.15, 0.2, 0.28]
-        for d in delays:
-            c = random.choice(CHARACTERS)
-            ri = RARITIES[c["rarity"]]
-            spin_embed = discord.Embed(
-                title=f"{ri['emoji']}  {c['name']}",
-                description=f"**{c['rarity']}** tier",
-                color=ri["color"],
-            )
-            try:
-                await suspense.edit(embed=spin_embed)
-            except Exception:
-                pass
-            await asyncio.sleep(d)
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
@@ -2159,14 +2142,20 @@ async def spin(ctx: commands.Context):
 
     if not is_duplicate:
         embed = build_card_embed(inst, ctx, extra)
-        await suspense.edit(content=None, embed=embed)
+        if autoroll_active or fast > 0:
+            await suspense.edit(content=None, embed=embed)
+        else:
+            await ctx.send(embed=embed)
         _spin_locks.discard(uid)
         return
 
     embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
 
     view = DuplicateChoiceView(author_id=ctx.author.id)
-    await suspense.edit(content=None, embed=embed, view=view)
+    if autoroll_active or fast > 0:
+        await suspense.edit(content=None, embed=embed, view=view)
+    else:
+        await ctx.send(embed=embed, view=view)
     await view.wait()
 
     data = load_data()
@@ -2183,7 +2172,10 @@ async def spin(ctx: commands.Context):
         dup_embed.add_field(name="\U0001f4b0 Converted", value=f"Converted to **{duplicate_payout:,} Beli**.", inline=False)
 
     save_data(data)
-    await suspense.edit(embed=dup_embed, view=None)
+    if autoroll_active or fast > 0:
+        await suspense.edit(embed=dup_embed, view=None)
+    else:
+        await ctx.send(embed=dup_embed)
     _spin_locks.discard(uid)
 
 # -----------------------------------------------------------------------
@@ -2283,20 +2275,35 @@ async def inventory(ctx: commands.Context):
 
         embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
 
-        stats_line = (
-            f"\U0001f4b0 **{user.get('berries', 0):,}**  \u2003 "
-            f"\U0001f3af **{user.get('spins', 0)}/{MAX_SPINS}**  \u2003 "
-            f"\U0001f511 **{user.get('keys', 0)}**  \u2003 "
-            f"\u26a1 **{user.get('fast_spins', 0)}**"
-        )
-        auto = user.get("autoroll_remaining", 0)
+        def _safe(val, default=0):
+            try:
+                return int(val) if val is not None else default
+            except (TypeError, ValueError):
+                return default
+
+        berries = _safe(user.get("berries"))
+        spins = _safe(user.get("spins"))
+        keys = _safe(user.get("keys"))
+        fast = _safe(user.get("fast_spins"))
+        auto_val = _safe(user.get("autoroll_remaining"))
         break_ts = user.get("autoroll_break_until", 0)
-        auto_str = f"{auto // 60}m" if auto else "0m"
+        pity = _safe(user.get("pity_counter"))
+
+        stats_line = (
+            f"\U0001f4b0 **{berries:,}**  \u2003 "
+            f"\U0001f3af **{spins}/{MAX_SPINS}**  \u2003 "
+            f"\U0001f511 **{keys}**  \u2003 "
+            f"\u26a1 **{fast}**"
+        )
+        auto_str = f"{auto_val // 60}m" if auto_val else "0m"
         break_str = ""
-        if break_ts > datetime.utcnow().timestamp():
-            left = int((break_ts - datetime.utcnow().timestamp()) // 60)
-            break_str = f" (break {left}m)"
-        stats_line += f"  \u2003 \U0001f504 {auto_str}{break_str}  \u2003 \u26a1 {user.get('pity_counter', 0)}/{PITY_THRESHOLD}"
+        try:
+            if break_ts and break_ts > datetime.utcnow().timestamp():
+                left = int((break_ts - datetime.utcnow().timestamp()) // 60)
+                break_str = f" (break {left}m)"
+        except Exception:
+            pass
+        stats_line += f"  \u2003 \U0001f504 {auto_str}{break_str}  \u2003 \u26a1 {pity}/{PITY_THRESHOLD}"
         embed.description = stats_line
 
         field_count = 0
