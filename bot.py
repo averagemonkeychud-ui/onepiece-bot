@@ -2935,26 +2935,27 @@ async def preview(ctx: commands.Context, *, name: str = None):
     fruit = inst.get("fruit")
     total = inst.get("power", 0) + inst.get("health", 0) + inst.get("speed", 0)
     maxes = _STAT_MAX.get(rarity, _STAT_MAX["C"])
-    bar = lambda v, m: _stat_bar(v, m)
+    bar = lambda v, m: _stat_bar(v, m, 5)
 
+    sep = "\u2501" * 24
     desc = (
-        f"\u2501" * 32 + "\n"
+        f"{sep}\n"
         f"\u25c6  **{name}**  \u25c6\n"
         f"{RARITIES[rarity]['emoji']}  {rarity}  \u2014  {inst['race']}\n"
-        f"\u2501" * 32 + "\n\n"
+        f"{sep}\n\n"
         f"{race_data['emoji']}  {inst['race']}"
     )
     if fruit:
         fru = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
-        desc += f"   \u2502   {fru.get('emoji', '')}  {fruit['name']}\n`{fruit.get('type', '')}`"
+        desc += f"   \u2502   {fru.get('emoji', '')}  {fruit['name']}"
     else:
-        desc += "\n`No Devil Fruit`"
+        desc += "\n`No Fruit`"
     desc += "\n\n"
     desc += (
-        f"\u26a1  **PWR** `{inst['power']:>5,}`  {bar(inst['power'], maxes['power'])}\n"
-        f"\u2764  **HP**  `{inst['health']:>5,}`  {bar(inst['health'], maxes['health'])}\n"
-        f"\U0001f4a8  **SPD** `{inst['speed']:>5,}`  {bar(inst['speed'], maxes['speed'])}\n"
-        f"\u2501" * 32 + "\n"
+        f"\u26a1  PWR `{inst['power']:>5,}`  {bar(inst['power'], maxes['power'])}\n"
+        f"\u2764  HP  `{inst['health']:>5,}`  {bar(inst['health'], maxes['health'])}\n"
+        f"\U0001f4a8  SPD `{inst['speed']:>5,}`  {bar(inst['speed'], maxes['speed'])}\n"
+        f"{sep}\n"
         f"\U0001f4ca  **TOTAL** `{total:>6,}`  {bar(total, sum(maxes.values()))}"
     )
 
