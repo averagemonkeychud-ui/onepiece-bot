@@ -248,7 +248,7 @@ RARITIES = {
     "A":     {"weight": 10_000,   "color": 0xFFC107, "emoji": "\U0001f7e1", "value": 400_000},
     "S":     {"weight": 2_000,    "color": 0xFF1744, "emoji": "\U0001f534", "value": 1_200_000},
     "SS":    {"weight": 500,      "color": 0x00E5FF, "emoji": "\u2694\ufe0f", "value": 3_000_000},
-    "HDYGT": {"weight": 1,        "color": 0xFFFFFF, "emoji": "\u2753", "value": 20_000_000},
+    "HDYGT": {"weight": 1,        "color": 0xFFFFFF, "emoji": "\u2753", "value": 100_000_000},
 }
 
 CHARACTERS = [
