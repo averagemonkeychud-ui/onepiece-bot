@@ -2080,7 +2080,7 @@ async def spin(ctx: commands.Context):
         suspense = await ctx.send("\U0001f3b2 Spinning...")
         # addictive slot-machine effect: cycle through rarities
         rarity_order = ["E", "D", "C", "B", "A", "S", "SS", "HDYGT"]
-        for _ in range(3):
+        for _ in range(5):
             r = random.choice(rarity_order)
             ri = RARITIES[r]
             spin_embed = discord.Embed(
@@ -2092,7 +2092,7 @@ async def spin(ctx: commands.Context):
                 await suspense.edit(embed=spin_embed)
             except Exception:
                 pass
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.55)
         # final spin animation
         ri = RARITIES[random.choice(rarity_order)]
         await suspense.edit(embed=discord.Embed(
@@ -2100,7 +2100,7 @@ async def spin(ctx: commands.Context):
             description="Here it comes...",
             color=ri["color"],
         ))
-        await asyncio.sleep(max(0.1, ROLL_ANIMATION_DELAY - 1.35))
+        await asyncio.sleep(max(0.1, 5 - (0.55 * 5 + 0.3)))
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
