@@ -2039,6 +2039,7 @@ async def help_command(ctx: commands.Context):
 
 # in-memory spam tracker: user_id -> [timestamp, ...]
 _spam_tracker: dict = {}
+_spam_cooldown: dict = {}
 _spin_locks: set = set()
 _stuck_warnings: dict = {}
 
@@ -2090,14 +2091,24 @@ async def spin(ctx: commands.Context):
     now_ts = datetime.utcnow().timestamp()
     now = time.time()
 
-    # anti-spam: block if >4 spins in 30s window
-    spam = _spam_tracker.get(ctx.author.id, [])
-    spam = [t for t in spam if now - t < 30]
-    if len(spam) >= 4:
-        _spam_tracker[ctx.author.id] = spam
+    now = time.time()
+
+    # anti-spam: 10s cooldown after 6+ spins in a 2s window
+    cooldown_until = _spam_cooldown.get(ctx.author.id, 0)
+    if now < cooldown_until:
         await ctx.send(embed=branded_embed(
             "\u26a0\ufe0f Spam Detected",
-            f"{ctx.author.mention}, you're spinning too fast! Please wait **20 seconds**.",
+            f"{ctx.author.mention}, you're spinning too fast! Please wait **{int(cooldown_until - now)}s**.",
+            color=0xFF9800,
+        ))
+        return
+    spam = _spam_tracker.get(ctx.author.id, [])
+    spam = [t for t in spam if now - t < 2]
+    if len(spam) >= 5:
+        _spam_cooldown[ctx.author.id] = now + 10
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Spam Detected",
+            f"{ctx.author.mention}, you're spinning too fast! Please wait **10 seconds**.",
             color=0xFF9800,
         ))
         return
