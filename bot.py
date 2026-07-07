@@ -2093,13 +2093,6 @@ async def spin(ctx: commands.Context):
             except Exception:
                 pass
             await asyncio.sleep(d)
-        # final reveal pause
-        await suspense.edit(embed=discord.Embed(
-            title="\U0001f3b2  ???",
-            description="Here it comes...",
-            color=0xFFD700,
-        ))
-        await asyncio.sleep(0.35)
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
