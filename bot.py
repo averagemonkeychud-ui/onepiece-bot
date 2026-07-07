@@ -1011,183 +1011,169 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
     return embed
 
 # =============================================================================
-# DUEL SYSTEM (turn-based with attack selection)
+# DUEL SYSTEM (challenge -> pick -> battle)
 # =============================================================================
 active_duels = {}
+DUEL_CHALLENGE_TIMEOUT = 60
+DUEL_BOT_REWARD_MULTIPLIER = 0.5
+DUEL_MAX_WAGER = 10_000_000
+
 
 def hp_bar(current: int, max_hp: int, length: int = 8) -> str:
     filled = round((current / max(1, max_hp)) * length)
     filled = max(0, min(length, filled))
     return "\u2588" * filled + "\u2592" * (length - filled)
 
-class DuelFighter:
-    def __init__(self, user_id: int, instances: list):
-        self.user_id = user_id
-        self.characters = []
-        for inst in instances:
-            race_data = RACES.get(inst["race"], RACES["Human"])
-            fruit = inst.get("fruit")
-            self.characters.append({
-                "inst_id": inst["inst_id"],
-                "name": inst["character"],
-                "rarity": inst["rarity"],
-                "race_emoji": race_data["emoji"],
-                "fruit_emoji": FRUIT_RARITIES[fruit["rarity"]]["emoji"] if fruit else "",
-                "power": inst["power"],
-                "max_hp": inst["health"],
-                "current_hp": inst["health"],
-                "speed": inst["speed"],
-                "alive": True,
-            })
-
-    @property
-    def alive(self) -> list:
-        return [c for c in self.characters if c["alive"]]
-
-    @property
-    def alive_count(self) -> int:
-        return sum(1 for c in self.characters if c["alive"])
-
-    @property
-    def total_hp(self) -> int:
-        return sum(c["max_hp"] for c in self.characters)
-
-    @property
-    def current_hp_total(self) -> int:
-        return sum(c["current_hp"] for c in self.characters)
 
 class DuelState:
-    def __init__(self, ctx: commands.Context, opponent: discord.Member, wager: int):
+    # State for challenge -> pick -> battle flow
+    def __init__(self, ctx, opponent, wager):
         self.ctx = ctx
         self.opponent = opponent
         self.wager = wager
         self.channel = ctx.channel
-        self.attacker_idx = random.randint(0, 1)
         self.finished = False
-        self.message = None
+        self.is_bot = False
+        self.challenger_char = None
+        self.opponent_char = None
+        self.attacker_id = None
         self.winner_id = None
-        self.fighters: dict[int, DuelFighter] = {}
+        self.message = None
 
-    @property
-    def attacker_id(self) -> int:
-        return [self.ctx.author.id, self.opponent.id][self.attacker_idx]
 
-    @property
-    def defender_id(self) -> int:
-        return [self.ctx.author.id, self.opponent.id][1 - self.attacker_idx]
+class DuelChallengeView(discord.ui.View):
+    def __init__(self, ctx, opponent, wager):
+        super().__init__(timeout=DUEL_CHALLENGE_TIMEOUT)
+        self.ctx = ctx
+        self.opponent = opponent
+        self.wager = wager
+        self.accepted = False
 
-    def get_fighter(self, uid: int) -> DuelFighter:
-        return self.fighters[uid]
-
-    def switch_turn(self):
-        self.attacker_idx = 1 - self.attacker_idx
-
-    def build_status_embed(self, highlight: str = None) -> discord.Embed:
-        embed = discord.Embed(title="\u2694\ufe0f Duel", color=0xFF5722)
-
-        for pid in [self.ctx.author.id, self.opponent.id]:
-            fighter = self.fighters[pid]
-            member = self.ctx.author if pid == self.ctx.author.id else self.opponent
-            lines = []
-            for c in fighter.characters:
-                hp = hp_bar(c["current_hp"], c["max_hp"])
-                status = "\u2620" if not c["alive"] else f"{hp} {c['current_hp']:,}/{c['max_hp']:,}"
-                name_str = f"{c['race_emoji']}{c['fruit_emoji']} {RARITIES[c['rarity']]['emoji']} **{c['name']}**"
-                lines.append(f"{name_str}\n{status}")
-
-            val = "\n".join(lines) if lines else "*(no team)*"
-            h = "" if highlight != member.display_name else " \u25b6 **ATTACKING**"
-            embed.add_field(
-                name=f"{member.display_name}{h}",
-                value=val,
-                inline=True,
-            )
-
-        p1 = self.fighters[self.ctx.author.id]
-        p2 = self.fighters[self.opponent.id]
-        embed.add_field(name="Status", value=f"{p1.alive_count} vs {p2.alive_count} alive", inline=False)
-
-        wager_str = f"**{self.wager:,} Beli**" if self.wager else "None"
-        embed.set_footer(text=f"Wager: {wager_str} \u2022 Pick your attacker!")
-        return embed
-
-class DuelView(discord.ui.View):
-    def __init__(self, state: DuelState):
-        super().__init__(timeout=30)
-        self.state = state
-        self.attacker_choice = None
-        self.defender_choice = None
-        self.auto_defended = False
-
-        attacker = state.get_fighter(state.attacker_id)
-        def_opts = [
-            discord.SelectOption(
-                label=f"{c['name']} (HP: {c['current_hp']:,}/{c['max_hp']:,})",
-                value=str(c["inst_id"]),
-                emoji=RARITIES[c["rarity"]]["emoji"],
-            )
-            for c in attacker.alive
-        ]
-        if def_opts:
-            self.attacker_select = discord.ui.Select(
-                custom_id="a",
-                placeholder="Choose your attacker...",
-                options=def_opts,
-            )
-            self.attacker_select.callback = self._on_attacker_pick
-            self.add_item(self.attacker_select)
-
-        defender = state.get_fighter(state.defender_id)
-        def_opts2 = [
-            discord.SelectOption(
-                label=f"{c['name']} (HP: {c['current_hp']:,}/{c['max_hp']:,})",
-                value=str(c["inst_id"]),
-                emoji=RARITIES[c["rarity"]]["emoji"],
-            )
-            for c in defender.alive
-        ]
-        if def_opts2:
-            self.defender_select = discord.ui.Select(
-                custom_id="d",
-                placeholder="Choose defender (or auto)...",
-                options=def_opts2,
-            )
-            self.defender_select.callback = self._on_defender_pick
-            self.add_item(self.defender_select)
-
-    async def _on_attacker_pick(self, interaction: discord.Interaction):
-        if interaction.user.id != self.state.attacker_id:
-            await interaction.response.send_message("Not your turn to attack!", ephemeral=True)
+    @discord.ui.button(label="\u2705 Accept", style=discord.ButtonStyle.success)
+    async def accept_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.opponent.id:
+            await interaction.response.send_message("Only the challenged player can accept.", ephemeral=True)
             return
-        self.attacker_choice = int(self.attacker_select.values[0])
-        self.attacker_select.disabled = True
-        await interaction.response.defer()
-        self.check_done()
+        self.accepted = True
+        self.stop()
 
-    async def _on_defender_pick(self, interaction: discord.Interaction):
-        if interaction.user.id != self.state.defender_id:
-            await interaction.response.send_message("Not your turn to defend!", ephemeral=True)
+    @discord.ui.button(label="\u274c Decline", style=discord.ButtonStyle.danger)
+    async def decline_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.opponent.id:
+            await interaction.response.send_message("Only the challenged player can decline.", ephemeral=True)
             return
-        self.defender_choice = int(self.defender_select.values[0])
-        self.defender_select.disabled = True
-        await interaction.response.defer()
-        self.check_done()
+        self.stop()
 
-    def check_done(self):
-        if self.attacker_choice is not None and self.defender_choice is not None:
-            self.stop()
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id not in (self.ctx.author.id, self.opponent.id):
+            await interaction.response.send_message("Not your duel!", ephemeral=True)
+            return False
+        return True
 
     async def on_timeout(self):
-        if self.attacker_choice is None:
-            attacker = self.state.get_fighter(self.state.attacker_id)
-            if attacker.alive:
-                self.attacker_choice = max(attacker.alive, key=lambda c: c["current_hp"])["inst_id"]
-        if self.defender_choice is None:
-            defender = self.state.get_fighter(self.state.defender_id)
-            if defender.alive:
-                self.defender_choice = max(defender.alive, key=lambda c: c["current_hp"])["inst_id"]
-                self.auto_defended = True
         self.stop()
+
+
+class BotOptionView(discord.ui.View):
+    def __init__(self, ctx, opponent):
+        super().__init__(timeout=30)
+        self.ctx = ctx
+        self.opponent = opponent
+        self.bot_mode = False
+
+    @discord.ui.button(label="\U0001f916 Fight Bot", style=discord.ButtonStyle.secondary)
+    async def bot_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("Not your match!", ephemeral=True)
+            return
+        self.bot_mode = True
+        self.stop()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.ctx.author.id:
+            await interaction.response.send_message("Not your match!", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        self.stop()
+
+
+class TeamPickerView(discord.ui.View):
+    def __init__(self, state, challenger_team, opp_team, is_bot=False):
+        super().__init__(timeout=30)
+        self.state = state
+        self.is_bot = is_bot
+        self.challenger_pick = None
+        self.opponent_pick = None
+
+        opts = []
+        for inst in challenger_team:
+            char = character_lookup(inst["character"])
+            r = char["rarity"] if char else "C"
+            total = instance_total_stat(inst)
+            opts.append(discord.SelectOption(
+                label=f"{inst['character']}  [{total:,}]",
+                value=str(inst["inst_id"]),
+                emoji=RARITIES[r]["emoji"],
+                description=f"{inst['race']} HP:{inst['health']:,} PW:{inst['power']:,}",
+            ))
+        if opts:
+            s = discord.ui.Select(placeholder="Pick your fighter...", options=opts, row=0)
+            s.callback = self._on_challenger_pick
+            self.add_item(s)
+
+        if not is_bot:
+            opts2 = []
+            for inst in opp_team:
+                char = character_lookup(inst["character"])
+                r = char["rarity"] if char else "C"
+                total = instance_total_stat(inst)
+                opts2.append(discord.SelectOption(
+                    label=f"{inst['character']}  [{total:,}]",
+                    value=str(inst["inst_id"]),
+                    emoji=RARITIES[r]["emoji"],
+                    description=f"{inst['race']} HP:{inst['health']:,} PW:{inst['power']:,}",
+                ))
+            if opts2:
+                s2 = discord.ui.Select(placeholder="Pick your fighter...", options=opts2, row=1)
+                s2.callback = self._on_opponent_pick
+                self.add_item(s2)
+
+    async def _on_challenger_pick(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if interaction.user.id != self.state.ctx.author.id:
+            await interaction.response.send_message("Not your pick!", ephemeral=True)
+            return
+        self.challenger_pick = int(select.values[0])
+        select.disabled = True
+        await interaction.response.defer()
+        self._check_done()
+
+    async def _on_opponent_pick(self, interaction: discord.Interaction, select: discord.ui.Select):
+        if not self.is_bot and interaction.user.id != self.state.opponent.id:
+            await interaction.response.send_message("Not your pick!", ephemeral=True)
+            return
+        self.opponent_pick = int(select.values[0])
+        select.disabled = True
+        await interaction.response.defer()
+        self._check_done()
+
+    def _check_done(self):
+        if self.challenger_pick is not None and (self.is_bot or self.opponent_pick is not None):
+            self.stop()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if self.is_bot and interaction.user.id != self.state.ctx.author.id:
+            await interaction.response.send_message("Not your match!", ephemeral=True)
+            return False
+        if interaction.user.id not in (self.state.ctx.author.id, self.state.opponent.id):
+            await interaction.response.send_message("Not your match!", ephemeral=True)
+            return False
+        return True
+
+    async def on_timeout(self):
+        self.stop()
+
 
 def get_duel_team(user: dict) -> list:
     ids = user["team"] if user["team"] else []
@@ -2884,7 +2870,7 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
     ))
 
 # -----------------------------------------------------------------------
-# op duel (turn-based interactive)
+# op duel (challenge -> pick -> battle)
 # -----------------------------------------------------------------------
 @bot.command(name="duel")
 @commands.cooldown(1, 5, commands.BucketType.channel)
@@ -2895,144 +2881,220 @@ async def duel(ctx: commands.Context, opponent: discord.Member, wager: int = 0):
     if opponent.bot:
         await ctx.send("\u26a0\ufe0f You can't duel a bot.")
         return
-
     if ctx.channel.id in active_duels:
         await ctx.send("\u26a0\ufe0f A duel is already active in this channel.")
+        return
+    if wager < 0:
+        await ctx.send("\u26a0\ufe0f Wager can't be negative.")
+        return
+    if wager > DUEL_MAX_WAGER:
+        await ctx.send(f"\u26a0\ufe0f Max wager is **{DUEL_MAX_WAGER:,} Beli**.")
         return
 
     data = load_data()
     challenger = get_user(data, str(ctx.author.id))
-    defender_user = get_user(data, str(opponent.id))
+    opponent_user = get_user(data, str(opponent.id))
 
-    if wager < 0:
-        await ctx.send("\u26a0\ufe0f Wager can't be negative.")
-        return
-    max_wager = 10_000_000
-    if wager > max_wager:
-        await ctx.send(f"\u26a0\ufe0f Max wager is **{max_wager:,} Beli**.")
-        return
-    if wager > 0 and (challenger["berries"] < wager or defender_user["berries"] < wager):
+    if wager > 0 and (challenger["berries"] < wager or opponent_user["berries"] < wager):
         await ctx.send("\u26a0\ufe0f Both need enough berries to cover the wager.")
         return
 
     chall_team = get_duel_team(challenger)
-    def_team = get_duel_team(defender_user)
-    if not chall_team or not def_team:
+    opp_team = get_duel_team(opponent_user)
+    if not chall_team or not opp_team:
         await ctx.send("\u26a0\ufe0f Both players need at least one character to duel.")
         return
 
     state = DuelState(ctx, opponent, wager)
-    state.fighters[ctx.author.id] = DuelFighter(ctx.author.id, chall_team)
-    state.fighters[opponent.id] = DuelFighter(opponent.id, def_team)
 
-    if wager > 0:
-        challenger["berries"] -= wager
-        defender_user["berries"] -= wager
-        save_data(data)
+    # Phase 1: Send challenge
+    challenge_view = DuelChallengeView(ctx, opponent, wager)
 
-    active_duels[ctx.channel.id] = state
-    await _run_duel_round(state)
-
-
-async def _run_duel_round(state: DuelState):
-    attacker_fighter = state.get_fighter(state.attacker_id)
-    defender_fighter = state.get_fighter(state.defender_id)
-
-    if not attacker_fighter.alive:
-        state.winner_id = state.defender_id
-        await _finish_duel(state)
-        return
-    if not defender_fighter.alive:
-        state.winner_id = state.attacker_id
-        await _finish_duel(state)
-        return
-
-    embed = state.build_status_embed(
-        highlight=state.ctx.author.display_name if state.attacker_id == state.ctx.author.id else state.opponent.display_name
-    )
-
-    view = DuelView(state)
-    if state.message:
-        await state.message.edit(embed=embed, view=view)
-    else:
-        state.message = await state.channel.send(embed=embed, view=view)
-
-    await view.wait()
-
-    if state.finished:
-        return
-
-    attacker_fighter = state.get_fighter(state.attacker_id)
-    defender_fighter = state.get_fighter(state.defender_id)
-
-    att_inst = next((c for c in attacker_fighter.alive if c["inst_id"] == view.attacker_choice), None)
-    def_inst = next((c for c in defender_fighter.alive if c["inst_id"] == view.defender_choice), None)
-
-    if not att_inst or not def_inst:
-        await _finish_duel(state)
-        return
-
-    base_damage = att_inst["power"]
-    reduction = def_inst["speed"] // 3
-    raw_damage = max(base_damage // 10, base_damage - reduction)
-    damage = round(raw_damage * random.uniform(0.85, 1.0))
-    damage = max(1, damage)
-
-    def_inst["current_hp"] -= damage
-    if def_inst["current_hp"] <= 0:
-        def_inst["alive"] = False
-        def_inst["current_hp"] = 0
-
-    defender_name = state.opponent.display_name if state.defender_id == state.opponent.id else state.ctx.author.display_name
-    attacker_name = state.ctx.author.display_name if state.attacker_id == state.ctx.author.id else state.opponent.display_name
-
-    result_embed = discord.Embed(
-        title="\u2694\ufe0f Attack!",
-        description=(
-            f"**{attacker_name}** attacks with {RARITIES[att_inst['rarity']]['emoji']} **{att_inst['name']}**\n"
-            f"\u27a1 **{defender_name}** defends with {RARITIES[def_inst['rarity']]['emoji']} **{def_inst['name']}**\n\n"
-            f"\U0001f5e1 **{damage:,} damage**"
-            f"{' \u2620 **DEFEATED!**' if not def_inst['alive'] else ''}"
-        ),
+    desc = f"**{ctx.author.display_name}** challenges **{opponent.display_name}** to a duel!"
+    if wager:
+        desc += f"\n\nWager: **{wager:,} Beli**"
+    challenge_embed = discord.Embed(
+        title="\u2694\ufe0f Duel Challenge!",
+        description=desc,
         color=0xFF5722,
     )
+    challenge_embed.set_footer(text=f"Expires in {DUEL_CHALLENGE_TIMEOUT}s")
 
-    if state.message:
-        await state.message.edit(embed=result_embed, view=None)
+    msg = await ctx.send(embed=challenge_embed, view=challenge_view)
+    await challenge_view.wait()
 
-    await asyncio.sleep(2)
+    if challenge_view.accepted:
+        # Phase 2: Pick characters
+        pick_view = TeamPickerView(state, chall_team, opp_team, is_bot=False)
 
-    if not defender_fighter.alive:
-        state.winner_id = state.attacker_id
-        await _finish_duel(state)
-        return
+        if wager > 0:
+            challenger["berries"] -= wager
+            opponent_user["berries"] -= wager
+            save_data(data)
 
-    state.switch_turn()
-    await _run_duel_round(state)
+        active_duels[ctx.channel.id] = state
+
+        pick_embed = discord.Embed(
+            title="\u2694\ufe0f Select Your Fighter",
+            description=f"**{ctx.author.display_name}** vs **{opponent.display_name}**\nPick one character from your team!",
+            color=0xFF5722,
+        )
+        await msg.edit(embed=pick_embed, view=pick_view)
+        await pick_view.wait()
+
+        # Resolve picks (auto-pick highest stat on timeout)
+        if pick_view.challenger_pick is None:
+            pick_view.challenger_pick = max(chall_team, key=instance_total_stat)["inst_id"]
+        if pick_view.opponent_pick is None:
+            pick_view.opponent_pick = max(opp_team, key=instance_total_stat)["inst_id"]
+
+        state.challenger_char = next(i for i in chall_team if i["inst_id"] == pick_view.challenger_pick)
+        state.opponent_char = next(i for i in opp_team if i["inst_id"] == pick_view.opponent_pick)
+        state.attacker_id = random.choice([ctx.author.id, opponent.id])
+        state.message = msg
+
+        # Phase 3: Battle
+        await _run_battle(state)
+
+    else:
+        # Bot fallback
+        bot_view = BotOptionView(ctx, opponent)
+
+        bot_embed = discord.Embed(
+            title="\u23f0 No Response",
+            description=f"**{opponent.display_name}** didn't accept.\nYou can fight a bot using their team - reward is **50%** of normal.",
+            color=0x9E9E9E,
+        )
+        await msg.edit(embed=bot_embed, view=bot_view)
+        await bot_view.wait()
+
+        if bot_view.bot_mode:
+            state.is_bot = True
+            state.challenger_char = max(chall_team, key=instance_total_stat)
+            state.opponent_char = max(opp_team, key=instance_total_stat)
+            state.attacker_id = ctx.author.id
+            state.message = msg
+
+            active_duels[ctx.channel.id] = state
+            await _run_battle(state)
+        else:
+            await msg.edit(embed=discord.Embed(
+                title="\U0001f44b Duel Cancelled",
+                description="Maybe next time!",
+                color=0x9E9E9E,
+            ), view=None)
+
+
+async def _run_battle(state: DuelState):
+    # Auto-battle between two selected characters until one dies.
+    import copy
+
+    p1 = copy.deepcopy(state.challenger_char)
+    p2 = copy.deepcopy(state.opponent_char)
+    p1["current_hp"] = p1["health"]
+    p2["current_hp"] = p2["health"]
+
+    attacker_char = p1 if state.attacker_id == state.ctx.author.id else p2
+    defender_char = p2 if state.attacker_id == state.ctx.author.id else p1
+
+    if state.is_bot:
+        p1_name = state.ctx.author.display_name
+        p2_name = f"{state.opponent.display_name} (Bot)"
+    else:
+        p1_name = state.ctx.author.display_name
+        p2_name = state.opponent.display_name
+
+    if id(attacker_char) == id(p2):
+        p1_name, p2_name = p2_name, p1_name
+
+    rounds = []
+    r = 1
+
+    while True:
+        dmg = max(1, round(
+            max(attacker_char["power"] // 10, attacker_char["power"] - defender_char["speed"] // 3)
+            * random.uniform(0.85, 1.0)
+        ))
+        defender_char["current_hp"] -= dmg
+        if defender_char["current_hp"] < 0:
+            defender_char["current_hp"] = 0
+
+        rounds.append(
+            f"**R{r}** {RARITIES[attacker_char['rarity']]['emoji']} **{attacker_char['name']}**"
+            f" \u279c {RARITIES[defender_char['rarity']]['emoji']} **{defender_char['name']}**"
+            f" \u2014 **{dmg:,}** {hp_bar(defender_char['current_hp'], defender_char['health'])}"
+            f" ({defender_char['current_hp']:,}/{defender_char['health']:,})"
+        )
+
+        if defender_char["current_hp"] <= 0:
+            state.winner_id = state.attacker_id
+            break
+
+        attacker_char, defender_char = defender_char, attacker_char
+        r += 1
+        if r > 100:
+            break
+
+        if r % 3 == 1:
+            progress = discord.Embed(
+                title="\u2694\ufe0f Battle in Progress",
+                description="\n".join(rounds[-3:]),
+                color=0xFF5722,
+            )
+            await state.message.edit(embed=progress, view=None)
+            await asyncio.sleep(1.5)
+
+    winner_name = p1_name if state.winner_id == state.ctx.author.id else p2_name
+
+    final = discord.Embed(
+        title="\u2694\ufe0f Battle Over!",
+        description="\n".join(rounds) + f"\n\n**{winner_name}** wins! \U0001f3c6",
+        color=0x4CAF50,
+    )
+    await state.message.edit(embed=final, view=None)
+    await asyncio.sleep(1.5)
+
+    await _finish_duel(state)
 
 
 async def _finish_duel(state: DuelState):
     state.finished = True
     active_duels.pop(state.channel.id, None)
 
+    if state.winner_id is None:
+        return
+
     data = load_data()
     winner_user = get_user(data, str(state.winner_id))
-    loser_id = state.opponent.id if state.winner_id == state.ctx.author.id else state.ctx.author.id
-    loser_user = get_user(data, str(loser_id))
 
-    if state.wager > 0:
-        winner_user["berries"] += state.wager * 2
+    winner_name = state.ctx.author.display_name if state.winner_id == state.ctx.author.id else state.opponent.display_name
+
+    if state.is_bot:
+        loser_char = state.opponent_char
+        base = RARITIES[loser_char["rarity"]]["value"] // 10
+        reward = int(base * DUEL_BOT_REWARD_MULTIPLIER)
+        winner_user["berries"] += reward
+        reward_text = f"**{reward:,} Beli** (bot match \u2014 50%)"
+    else:
+        pot = state.wager * 2 if state.wager > 0 else 0
+        loser_char = state.opponent_char if state.winner_id == state.ctx.author.id else state.challenger_char
+        bonus = RARITIES[loser_char["rarity"]]["value"] // 10
+        total_reward = pot + bonus
+        winner_user["berries"] += total_reward
+        if state.wager > 0:
+            reward_text = f"**{total_reward:,} Beli** (pot: {pot:,} + bonus: {bonus:,})"
+        else:
+            reward_text = f"**{bonus:,} Beli**"
+
     bump_quest_progress(winner_user, "duel_win")
     save_data(data)
 
-    winner_name = state.ctx.author.display_name if state.winner_id == state.ctx.author.id else state.opponent.display_name
     embed = discord.Embed(
-        title="\U0001f3c6 **DUEL OVER**",
-        description=f"**{winner_name}** wins the duel!",
+        title="\U0001f3c6 Duel Won!",
+        description=f"**{winner_name}** takes the victory!",
         color=0x4CAF50,
     )
-    if state.wager > 0:
-        embed.add_field(name="\U0001f4b0 Prize", value=f"{state.wager * 2:,} Beli collected!", inline=False)
+    embed.add_field(name="\U0001f4b0 Reward", value=reward_text, inline=False)
     await state.channel.send(embed=embed)
 
 
@@ -3044,6 +3106,7 @@ async def duel_error(ctx: commands.Context, error: commands.CommandError):
         await ctx.send("\u26a0\ufe0f Wager must be a whole number of berries.")
     else:
         raise error
+
 
 # -----------------------------------------------------------------------
 # op team / op team+ / op team-
