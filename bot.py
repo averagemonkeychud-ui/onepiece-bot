@@ -2045,9 +2045,10 @@ _spin_locks: set = set()
 # op spin
 # -----------------------------------------------------------------------
 class DuplicateChoiceView(discord.ui.View):
-    def __init__(self, author_id: int):
+    def __init__(self, author_id: int, rarity: str = "C"):
         super().__init__(timeout=30)
         self.author_id = author_id
+        self.rarity = rarity
         self.choice = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -2070,7 +2071,10 @@ class DuplicateChoiceView(discord.ui.View):
 
     async def on_timeout(self):
         if self.choice is None:
-            self.choice = "convert"
+            if RARITY_ORDER.index(self.rarity) >= RARITY_ORDER.index("A"):
+                self.choice = "keep"
+            else:
+                self.choice = "convert"
 
 @bot.command(name="spin", aliases=["roll"])
 async def spin(ctx: commands.Context):
@@ -2231,7 +2235,7 @@ async def spin(ctx: commands.Context):
 
     embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
 
-    view = DuplicateChoiceView(author_id=ctx.author.id)
+    view = DuplicateChoiceView(author_id=ctx.author.id, rarity=rarity)
     if autoroll_active or fast > 0:
         await suspense.edit(content=None, embed=embed, view=view)
     else:
@@ -2327,8 +2331,56 @@ async def daily(ctx: commands.Context):
     ))
 
 # -----------------------------------------------------------------------
-# op inventory / op inv
+# op inventory / op inv — paginated card collection
 # -----------------------------------------------------------------------
+INV_PER_PAGE = 12
+
+class InventoryView(discord.ui.View):
+    def __init__(self, pages: list, total_cards: int, display_name: str, user_id: int, stats_line: str):
+        super().__init__(timeout=120)
+        self.pages = pages
+        self.total_cards = total_cards
+        self.display_name = display_name
+        self.user_id = user_id
+        self.stats_line = stats_line
+        self.page = 0
+        self._update_buttons()
+
+    def _embed(self) -> discord.Embed:
+        e = branded_embed(
+            f"\U0001f392 {self.display_name}'s Card Collection ({self.total_cards} cards)",
+            color=0x00BCD4,
+        )
+        e.description = self.stats_line
+        for field in self.pages[self.page]:
+            e.add_field(name=field["name"], value=field["value"], inline=False)
+        total_pages = len(self.pages)
+        if total_pages > 1:
+            e.set_footer(text=f"Page {self.page + 1}/{total_pages}")
+        return e
+
+    def _update_buttons(self):
+        self.prev_btn.disabled = self.page == 0
+        self.next_btn.disabled = self.page == len(self.pages) - 1
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your inventory!", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="\u25c0", style=discord.ButtonStyle.secondary)
+    async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self._embed(), view=self)
+
+    @discord.ui.button(label="\u25b6", style=discord.ButtonStyle.secondary)
+    async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.page += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self._embed(), view=self)
+
 @bot.command(name="inventory", aliases=["inv", "collection"])
 @commands.cooldown(1, 4, commands.BucketType.user)
 async def inventory(ctx: commands.Context):
@@ -2354,8 +2406,6 @@ async def inventory(ctx: commands.Context):
             c = character_lookup(item[0])
             return RARITY_ORDER.index(c["rarity"]) if c else 99
         sorted_chars = sorted(by_char.items(), key=_sort_key)
-
-        embed = branded_embed(f"\U0001f392 {ctx.author.display_name}'s Card Collection ({len(user['collection'])} cards)", color=0x00BCD4)
 
         def _safe(val, default=0):
             try:
@@ -2386,12 +2436,10 @@ async def inventory(ctx: commands.Context):
         except Exception:
             pass
         stats_line += f"  \u2003 \U0001f504 {auto_str}{break_str}  \u2003 \u26a1 {pity}/{PITY_THRESHOLD}"
-        embed.description = stats_line
 
-        field_count = 0
-        max_char_fields = 12
+        # Build field dicts grouped into pages
+        all_fields = []
         max_lines = 5
-        overflow = 0
         for char_name, instances in sorted_chars:
             char = character_lookup(char_name)
             if not char:
@@ -2409,28 +2457,21 @@ async def inventory(ctx: commands.Context):
                     continue
             if not lines:
                 continue
-            if field_count >= max_char_fields:
-                overflow += len(instances)
-                continue
             shown = lines[:max_lines]
             val = "\n".join(shown)
             remaining = len(lines) - max_lines
             if remaining > 0:
                 val += f"\n*+{remaining} more*"
-            embed.add_field(
-                name=f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x",
-                value=val,
-                inline=False,
-            )
-            field_count += 1
+            all_fields.append({"name": f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x", "value": val})
 
-        if overflow:
-            embed.add_field(name=f"\u2026 and {overflow} more card(s)", value="Use a more specific search to see them all.", inline=False)
+        pages = [all_fields[i:i + INV_PER_PAGE] for i in range(0, len(all_fields), INV_PER_PAGE)]
+
+        view = InventoryView(pages, len(user["collection"]), ctx.author.display_name, ctx.author.id, stats_line)
+        await ctx.send(embed=view._embed(), view=view)
     except Exception as e:
         tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
         print(f"[INVENTORY ERROR] {ctx.author.id}:")
         print(tb)
-        # auto-repair
         try:
             data = load_data()
             user = get_user(data, str(ctx.author.id))
