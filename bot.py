@@ -2050,6 +2050,7 @@ class DuplicateChoiceView(discord.ui.View):
         self.author_id = author_id
         self.rarity = rarity
         self.choice = None
+        self.message = None
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
@@ -2075,6 +2076,12 @@ class DuplicateChoiceView(discord.ui.View):
                 self.choice = "keep"
             else:
                 self.choice = "convert"
+        self.stop()
+        if self.message:
+            try:
+                await self.message.edit(view=None)
+            except Exception:
+                pass
 
 @bot.command(name="spin", aliases=["roll"])
 async def spin(ctx: commands.Context):
@@ -2226,24 +2233,26 @@ async def spin(ctx: commands.Context):
 
     if not is_duplicate:
         embed = build_card_embed(inst, ctx, extra)
-        if autoroll_active or fast > 0:
-            await suspense.edit(content=None, embed=embed)
-        else:
-            await ctx.send(embed=embed)
+        await suspense.edit(content=None, embed=embed)
         _spin_locks.discard(uid)
         return
 
-    embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
-
-    view = DuplicateChoiceView(author_id=ctx.author.id, rarity=rarity)
+    # autoroll / fast spin — skip buttons, auto-handle
     if autoroll_active or fast > 0:
-        await suspense.edit(content=None, embed=embed, view=view)
+        if RARITY_ORDER.index(rarity) >= RARITY_ORDER.index("A"):
+            view_choice = "keep"
+        else:
+            view_choice = "convert"
     else:
-        await ctx.send(embed=embed, view=view)
-    await view.wait()
+        embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
+        view = DuplicateChoiceView(author_id=ctx.author.id, rarity=rarity)
+        await suspense.edit(content=None, embed=embed, view=view)
+        view.message = suspense
+        await view.wait()
+        view_choice = view.choice
 
     dup_embed = build_card_embed(inst, ctx, {**extra})
-    if view.choice == "keep":
+    if view_choice == "keep":
         inst["inst_id"] = user["_next_inst_id"]
         user["_next_inst_id"] += 1
         user["collection"].append(inst)
@@ -2253,10 +2262,7 @@ async def spin(ctx: commands.Context):
         dup_embed.add_field(name="\U0001f4b0 Converted", value=f"Converted to **{duplicate_payout:,} Beli**.", inline=False)
 
     save_data(data)
-    if autoroll_active or fast > 0:
-        await suspense.edit(embed=dup_embed, view=None)
-    else:
-        await ctx.send(embed=dup_embed)
+    await suspense.edit(embed=dup_embed, view=None)
     _spin_locks.discard(uid)
 
 @spin.error
