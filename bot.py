@@ -2930,8 +2930,50 @@ async def preview(ctx: commands.Context, *, name: str = None):
         return
 
     inst = create_instance(char)
-    extra = {"spins": "\u2014", "pity": "\u2014"}
-    embed = build_card_embed(inst, ctx, extra)
+    rarity = char["rarity"]
+    race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+    fruit = inst.get("fruit")
+    total = inst.get("power", 0) + inst.get("health", 0) + inst.get("speed", 0)
+    maxes = _STAT_MAX.get(rarity, _STAT_MAX["C"])
+    bar = lambda v, m: _stat_bar(v, m)
+
+    desc = (
+        f"\u2501" * 32 + "\n"
+        f"\u25c6  **{name}**  \u25c6\n"
+        f"{RARITIES[rarity]['emoji']}  {rarity}  \u2014  {inst['race']}\n"
+        f"\u2501" * 32 + "\n\n"
+        f"{race_data['emoji']}  {inst['race']}"
+    )
+    if fruit:
+        fru = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
+        desc += f"   \u2502   {fru.get('emoji', '')}  {fruit['name']}\n`{fruit.get('type', '')}`"
+    else:
+        desc += "\n`No Devil Fruit`"
+    desc += "\n\n"
+    desc += (
+        f"\u26a1  **PWR** `{inst['power']:>5,}`  {bar(inst['power'], maxes['power'])}\n"
+        f"\u2764  **HP**  `{inst['health']:>5,}`  {bar(inst['health'], maxes['health'])}\n"
+        f"\U0001f4a8  **SPD** `{inst['speed']:>5,}`  {bar(inst['speed'], maxes['speed'])}\n"
+        f"\u2501" * 32 + "\n"
+        f"\U0001f4ca  **TOTAL** `{total:>6,}`  {bar(total, sum(maxes.values()))}"
+    )
+
+    embed = discord.Embed(
+        title="\u26a1  HOLO-PREVIEW  \u26a1",
+        description=desc,
+        color=0xFFFFFF,
+    )
+    embed.set_author(name=f"\u2728  {rarity}  \u2014  {inst['race']}")
+    if char.get("image"):
+        embed.set_image(url=char["image"])
+
+    footnote = f"*{race_data['emoji']} {inst['race']}: {race_data['desc']}*"
+    if fruit:
+        scale = RARITY_FRUIT_SCALE.get(rarity, 1.0)
+        fr = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
+        footnote += f"\n*{fr.get('emoji', '')} Fruit effect scaled x{scale:.2f} by {rarity} tier*"
+    embed.add_field(name="\U0001f4c4  SPECS", value=footnote, inline=False)
+
     embed.set_footer(text=f"PREVIEW  \u2022  {FOOTER_TEXT}")
     await ctx.send(embed=embed)
 
