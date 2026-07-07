@@ -2078,15 +2078,20 @@ async def spin(ctx: commands.Context):
         await asyncio.sleep(0.3)
     else:
         suspense = await ctx.send("\U0001f3b2 Spinning...")
-        # addictive slot-machine effect: cycle through random characters, slowing down
-        delays = [0.15, 0.2, 0.3, 0.5, 0.8, 1.2, 1.5]
+        # addictive slot-machine: cycle character cards in batches, slowing down
+        batch_size = 5
+        total_batches = 12
+        delays = [0.05 + (i / total_batches) ** 2 * 1.5 for i in range(total_batches)]
         for d in delays:
-            c = random.choice(CHARACTERS)
-            ri = RARITIES[c["rarity"]]
+            batch = random.choices(CHARACTERS, k=batch_size)
+            lines = []
+            for c in batch:
+                ri = RARITIES[c["rarity"]]
+                lines.append(f"{ri['emoji']} {c['name']}  ({c['rarity']})")
             spin_embed = discord.Embed(
-                title=f"{ri['emoji']}  {c['name']}",
-                description=f"**{c['rarity']}** tier",
-                color=ri["color"],
+                title="\U0001f3b2  Rolling...",
+                description="\n".join(lines),
+                color=0x2C3E50,
             )
             try:
                 await suspense.edit(embed=spin_embed)
