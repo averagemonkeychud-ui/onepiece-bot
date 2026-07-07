@@ -354,7 +354,7 @@ CHARACTERS = [
 
     {"name": "Joy Boy", "rarity": "SS", "image": "https://static.wikia.nocookie.net/onepiece/images/5/5a/Joy_Boy_Anime_Infobox.png/revision/latest?cb=20251221044647"},
 
-    {"name": "Monkey D. Luffy (Gear 5)", "rarity": "HDYGT", "image": "https://static.wikia.nocookie.net/onepiece/images/6/6d/Monkey_D._Luffy_Anime_Post_Timeskip_Infobox.png"},
+    {"name": "Monkey D. Luffy (Gear 5)", "rarity": "HDYGT", "image": "https://imgs.search.brave.com/aSCGcJvC0eb-Zomx7ly_QaZn5a6OptUOuKwGFzbRcDk/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93YWxs/cGFwZXJjYXZlLmNv/bS93cC93cDEyOTI1/NTc1LmpwZw"},
     {"name": "Imu", "rarity": "HDYGT", "image": "https://static.wikia.nocookie.net/onepiece/images/d/d4/Nerona_Imu_Manga_Infobox.png/revision/latest?cb=20260419150637"},
 ]
 
@@ -1986,6 +1986,7 @@ HELP_CATEGORIES = {
         "commands": [
             ("op inv / op inventory", "View your card collection"),
             ("op card <name>", "View a card's full stats"),
+            ("op p <name>", "Preview a character card (simulated pull)"),
             ("op dex / op characters", "Browse the character pool"),
             ("op sell <name>", "Sell a duplicate card"),
             ("op fixmycards", "Repair corrupted card data"),
