@@ -1895,7 +1895,7 @@ async def help_command(ctx: commands.Context):
             "`op odds` \u2014 view pull rates & chances\n"
             "`op refreshspins` \u2014 refill spins (1 Key)"
         ),
-        inline=True,
+        inline=False,
     )
     embed.add_field(
         name="\U0001f392 Collection",
@@ -1909,11 +1909,11 @@ async def help_command(ctx: commands.Context):
         inline=True,
     )
     embed.add_field(
-        name="\U0001f6cd\ufe0f Shop",
+        name="\U0001f6cd\ufe0f Shop & Economy",
         value=(
             "`op shop` \u2014 tap buttons to buy\n"
             "`op buy <item>` \u2014 text alternative\n"
-            "`op inv` \u2014 check your items (fast spins, auto roll)"
+            "`op leaderboard` \u2014 global rankings"
         ),
         inline=True,
     )
@@ -1928,20 +1928,10 @@ async def help_command(ctx: commands.Context):
         inline=True,
     )
     embed.add_field(
-        name="\U0001f4b0 Economy",
-        value=(
-            "`op shop` \u2014 browse items\n"
-            "`op buy <item>` \u2014 purchase items\n"
-            "`op leaderboard` \u2014 global rankings"
-        ),
-        inline=True,
-    )
-    embed.add_field(
         name="\U0001f4dc Quests",
         value=(
             "`op quests` \u2014 daily quests\n"
             "`op claim <id>` \u2014 claim reward\n"
-            "`op daily` \u2014 daily bonus\n"
             "\u200b"
         ),
         inline=True,
@@ -1957,22 +1947,12 @@ async def help_command(ctx: commands.Context):
         inline=True,
     )
     embed.add_field(
-        name="\U0001f3b5 Promos / Codes",
+        name="\U0001f3b5 Promos & Info",
         value=(
             "`op codes` \u2014 view available codes\n"
             "`op redeem` \u2014 enter a promo code\n"
-            "\u200b\n"
-            "\u200b"
-        ),
-        inline=True,
-    )
-    embed.add_field(
-        name="\U0001f4ec Invite & Info",
-        value=(
             "`op invite` \u2014 add bot to server\n"
-            "`op odds` \u2014 view pull rates\n"
-            "`op signup` \u2014 this menu\n"
-            "\u200b"
+            "`op signup` \u2014 this menu"
         ),
         inline=True,
     )
@@ -2922,17 +2902,14 @@ SHOP_EMOJIS = {
 
 def _build_shop_embed(user: dict = None) -> discord.Embed:
     embed = branded_embed("\U0001f6cd\ufe0f OP Shop", color=0x00BFA5)
+    lines = []
     if user:
-        embed.description = f"\U0001f4b0 Your balance: **{user['berries']:,} Beli**\nBuy any item by tapping a button below!"
-    else:
-        embed.description = "Buy with `op buy <item>` or tap a button below!"
+        lines.append(f"\U0001f4b0 Balance: **{user['berries']:,} Beli**\n")
     for key, item in SHOP_ITEMS.items():
         emoji = SHOP_EMOJIS.get(key, "\u2705")
-        embed.add_field(
-            name=f"{emoji}  {item['label']}  \u2014  **{item['cost']:,}** Beli",
-            value=item["desc"],
-            inline=False,
-        )
+        lines.append(f"{emoji}  **{item['label']}**  \u2014  `{item['cost']:,} Beli`")
+        lines.append(f"\u3000\u3000{item['desc']}")
+    embed.description = "\n".join(lines)
     embed.set_footer(text=FOOTER_TEXT)
     return embed
 
@@ -3450,9 +3427,10 @@ async def _show_leaderboard(ctx: commands.Context, server_only: bool):
         members = {str(m.id) for m in ctx.guild.members}
 
     embed = discord.Embed(
-        title=f"\U0001f3c6 Leaderboard — {scope.title()}",
+        title=f"\U0001f3c6 Leaderboard \u2014 {scope.title()}",
         color=0xFFD700,
     )
+    embed.set_footer(text=FOOTER_TEXT)
 
     for key, label, stat_fn, fmt in LEADERBOARD_CATEGORIES:
         entries = []
@@ -3466,9 +3444,11 @@ async def _show_leaderboard(ctx: commands.Context, server_only: bool):
                 entries.append((uid, val))
         entries.sort(key=lambda x: x[1], reverse=True)
         top = entries[:10]
+        medals = ["\U0001f947", "\U0001f948", "\U0001f949"]
         lines = []
         for rank, (uid, val) in enumerate(top, 1):
-            lines.append(f"`#{rank:<2}` <@{uid}>  \u2014  {fmt.format(val)}")
+            prefix = medals[rank - 1] if rank <= 3 else f"`#{rank:<2}`"
+            lines.append(f"{prefix} <@{uid}>  \u2014  {fmt.format(val)}")
         if not lines:
             lines.append("No data yet.")
         embed.add_field(
