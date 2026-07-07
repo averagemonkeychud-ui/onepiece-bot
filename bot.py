@@ -906,6 +906,29 @@ def _stat_bar(val: int, max_val: int, length: int = 10) -> str:
     filled = max(0, min(length, filled))
     return "▰" * filled + "▱" * (length - filled)
 
+def _compact_num(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}M"
+    if n >= 1_000:
+        return f"{n / 1_000:.1f}K"
+    return str(n)
+
+def _compact_stat_line(inst: dict) -> str:
+    rar = inst.get("rarity", "C")
+    race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+    fruit = inst.get("fruit")
+    fruit_emoji = FRUIT_RARITIES.get(fruit["rarity"], {}).get("emoji", "") if fruit else ""
+    maxes = _STAT_MAX.get(rar, _STAT_MAX["C"])
+    p, h, s = inst.get("power", 0), inst.get("health", 0), inst.get("speed", 0)
+    total = p + h + s
+    bar5 = lambda v, m: _stat_bar(v, m, 5)
+    return (
+        f"`#{inst.get('inst_id', 0):>3}` {race_data['emoji']} {fruit_emoji}  "
+        f"⚔{bar5(p, maxes['power'])}  ❤{bar5(h, maxes['health'])}  "
+        f"💨{bar5(s, maxes['speed'])}  📊{_compact_num(total)}"
+    )
+
+
 def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.Embed:
     if isinstance(ctx_or_author, commands.Context):
         display_name = ctx_or_author.author.display_name
@@ -2360,27 +2383,124 @@ async def daily(ctx: commands.Context):
     ))
 
 # -----------------------------------------------------------------------
-# op inventory / op inv — paginated card collection
+# -----------------------------------------------------------------------
+# op inventory / op inv \u2014 premium paginated collection
 # -----------------------------------------------------------------------
 INV_PER_PAGE = 12
 
+
+class CharacterDetailView(discord.ui.View):
+    def __init__(self, char_name: str, instances: list, display_name: str, user_id: int, inv_kwargs: dict):
+        super().__init__(timeout=120)
+        self.char_name = char_name
+        self.instances = instances
+        self.display_name = display_name
+        self.user_id = user_id
+        self.inv_kwargs = inv_kwargs
+
+    def _embed(self) -> discord.Embed:
+        char = character_lookup(self.char_name)
+        if not char:
+            return branded_embed("\u26a0\ufe0f Unknown Character", color=0xFF5722)
+        r = char["rarity"]
+        e = discord.Embed(
+            title=f"{RARITIES[r]['emoji']}  \u2605  {self.char_name}  \u2014  {len(self.instances)} card{'s' if len(self.instances) != 1 else ''}",
+            color=RARITIES[r]["color"],
+        )
+        if char.get("image"):
+            e.set_thumbnail(url=char["image"])
+        e.set_footer(text=f"{self.display_name}'s collection")
+
+        max_show = 6
+        shown = self.instances[:max_show]
+        remaining = len(self.instances) - max_show
+
+        sections = []
+        for inst in shown:
+            race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+            fruit = inst.get("fruit")
+            if fruit:
+                fru = FRUIT_RARITIES[fruit["rarity"]]
+                fruit_line = f"{fru['emoji']} {fruit['name']} (`{fruit['type']}`)"
+            else:
+                fruit_line = "*No Fruit*"
+            ir = inst.get("rarity", "C")
+            maxes = _STAT_MAX.get(ir, _STAT_MAX["C"])
+            p, h, s = inst.get("power", 0), inst.get("health", 0), inst.get("speed", 0)
+            total = p + h + s
+
+            section = (
+                f"**Instance #{inst.get('inst_id', '?')}**\n"
+                f"{race_data['emoji']} {inst['race']}  \u00b7  {fruit_line}\n"
+                f"\u2694 {_stat_bar(p, maxes['power'])}  `{p:,}`  \u00b7  \u2764 {_stat_bar(h, maxes['health'])}  `{h:,}`\n"
+                f"\U0001f4a8 {_stat_bar(s, maxes['speed'])}  `{s:,}`  \u00b7  \U0001f4ca **{total:,}** TOTAL"
+            )
+            sections.append(section)
+
+        desc = "\n\n\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n".join(sections)
+        if remaining > 0:
+            desc += f"\n\n*+{remaining} more \u2014 use the main inventory to see all*"
+        e.description = desc
+        return e
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message("Not your inventory!", ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.button(label="\u25c0 Back to Inventory", style=discord.ButtonStyle.secondary)
+    async def back_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        inv_view = InventoryView(**self.inv_kwargs)
+        await interaction.response.edit_message(embed=inv_view._embed(), view=inv_view)
+
+
 class InventoryView(discord.ui.View):
-    def __init__(self, pages: list, total_cards: int, display_name: str, user_id: int, stats_line: str):
+    def __init__(self, pages: list, total_cards: int, display_name: str, user_id: int,
+                 stats_line: str, page_images: list, page_colors: list, sorted_chars: list):
         super().__init__(timeout=120)
         self.pages = pages
         self.total_cards = total_cards
         self.display_name = display_name
         self.user_id = user_id
         self.stats_line = stats_line
+        self.page_images = page_images
+        self.page_colors = page_colors
+        self.sorted_chars = sorted_chars
         self.page = 0
+
+        # Character jump select (up to 25 options)
+        options = []
+        for name, instances in sorted_chars:
+            char = character_lookup(name)
+            if not char:
+                continue
+            r = char["rarity"]
+            label = f"{name}  \u2014  {len(instances)}x"
+            if len(label) > 100:
+                label = label[:97] + "..."
+            options.append(discord.SelectOption(
+                label=label, value=name, emoji=RARITIES[r]["emoji"],
+            ))
+        if options:
+            self.char_select = discord.ui.Select(
+                placeholder="\U0001f50d Jump to a character...",
+                options=options[:25], row=0,
+            )
+            self.char_select.callback = self._on_char_select
+            self.add_item(self.char_select)
+
         self._update_buttons()
 
     def _embed(self) -> discord.Embed:
-        e = branded_embed(
-            f"\U0001f392 {self.display_name}'s Card Collection ({self.total_cards} cards)",
-            color=0x00BCD4,
+        e = discord.Embed(
+            title=f"\U0001f4d2  {self.display_name}'s Collection  \u2014  {self.total_cards} cards",
+            color=self.page_colors[self.page],
         )
         e.description = self.stats_line
+        thumb = self.page_images[self.page]
+        if thumb:
+            e.set_thumbnail(url=thumb)
         for field in self.pages[self.page]:
             e.add_field(name=field["name"], value=field["value"], inline=False)
         total_pages = len(self.pages)
@@ -2398,13 +2518,39 @@ class InventoryView(discord.ui.View):
             return False
         return True
 
-    @discord.ui.button(label="\u25c0", style=discord.ButtonStyle.secondary)
+    async def _on_char_select(self, interaction: discord.Interaction, select: discord.ui.Select):
+        char_name = select.values[0]
+        instances = []
+        for name, insts in self.sorted_chars:
+            if name == char_name:
+                instances = insts
+                break
+        inv_kwargs = {
+            "pages": self.pages,
+            "total_cards": self.total_cards,
+            "display_name": self.display_name,
+            "user_id": self.user_id,
+            "stats_line": self.stats_line,
+            "page_images": self.page_images,
+            "page_colors": self.page_colors,
+            "sorted_chars": self.sorted_chars,
+        }
+        detail_view = CharacterDetailView(
+            char_name=char_name,
+            instances=instances,
+            display_name=self.display_name,
+            user_id=self.user_id,
+            inv_kwargs=inv_kwargs,
+        )
+        await interaction.response.edit_message(embed=detail_view._embed(), view=detail_view)
+
+    @discord.ui.button(label="\u25c0  Page", style=discord.ButtonStyle.primary, row=1)
     async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.page -= 1
         self._update_buttons()
         await interaction.response.edit_message(embed=self._embed(), view=self)
 
-    @discord.ui.button(label="\u25b6", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="Page  \u25b6", style=discord.ButtonStyle.primary, row=1)
     async def next_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.page += 1
         self._update_buttons()
@@ -2450,12 +2596,7 @@ async def inventory(ctx: commands.Context):
         break_ts = user.get("autoroll_break_until", 0)
         pity = _safe(user.get("pity_counter"))
 
-        stats_line = (
-            f"\U0001f4b0 **{berries:,}**  \u2003 "
-            f"\U0001f3af **{spins}/{MAX_SPINS}**  \u2003 "
-            f"\U0001f511 **{keys}**  \u2003 "
-            f"\u26a1 **{fast}**"
-        )
+        # --- premium stats line ---
         auto_str = f"{auto_val // 60}m" if auto_val else "0m"
         break_str = ""
         try:
@@ -2464,38 +2605,62 @@ async def inventory(ctx: commands.Context):
                 break_str = f" (break {left}m)"
         except Exception:
             pass
-        stats_line += f"  \u2003 \U0001f504 {auto_str}{break_str}  \u2003 \u26a1 {pity}/{PITY_THRESHOLD}"
+        stats_line = (
+            f"\U0001f4b0 **{berries:,}**  \u00b7  \U0001f3af **{spins}/{MAX_SPINS}**  \u00b7  "
+            f"\U0001f511 **{keys}**  \u00b7  \u26a1 **{fast}**\n"
+            f"\U0001f504 {auto_str}{break_str}  \u00b7  \u26a1 **{pity}/{PITY_THRESHOLD}**"
+        )
 
-        # Build field dicts grouped into pages
+        # Build field dicts grouped into pages with rich metadata
         all_fields = []
-        max_lines = 5
+        page_images = []
+        page_colors = []
+        max_lines = 4
+
         for char_name, instances in sorted_chars:
             char = character_lookup(char_name)
             if not char:
                 continue
             r = char["rarity"]
-            lines = []
+            instance_lines = []
             for inst in instances:
                 try:
-                    race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
-                    fruit = inst.get("fruit")
-                    fruit_str = FRUIT_RARITIES.get(fruit.get("rarity", ""), {}).get("emoji", "") if fruit else ""
-                    total = instance_total_stat(inst)
-                    lines.append(f"`#{inst.get('inst_id', 0):>3}` {race_data['emoji']}{fruit_str}  \u2694{inst.get('power', 0):,}  \u2764{inst.get('health', 0):,}  \U0001f4a8{inst.get('speed', 0):,}  \U0001f4ca{total:,}")
+                    instance_lines.append(_compact_stat_line(inst))
                 except Exception:
                     continue
-            if not lines:
+            if not instance_lines:
                 continue
-            shown = lines[:max_lines]
+            shown = instance_lines[:max_lines]
             val = "\n".join(shown)
-            remaining = len(lines) - max_lines
+            remaining = len(instance_lines) - max_lines
             if remaining > 0:
                 val += f"\n*+{remaining} more*"
-            all_fields.append({"name": f"{rarity_icon(r)}  {char_name}  \u2014  {len(instances)}x", "value": val})
+            all_fields.append({
+                "name": f"{rarity_icon(r)}  \u2605  {char_name}  \u2014  {len(instances)}\u00d7",
+                "value": val,
+                "rarity": r,
+                "image": char.get("image", ""),
+            })
 
         pages = [all_fields[i:i + INV_PER_PAGE] for i in range(0, len(all_fields), INV_PER_PAGE)]
 
-        view = InventoryView(pages, len(user["collection"]), ctx.author.display_name, ctx.author.id, stats_line)
+        # Build per-page thumbnail and color arrays
+        rarity_idx = {r: i for i, r in enumerate(RARITY_ORDER)}
+        for page_fields in pages:
+            best_r = min((pf["rarity"] for pf in page_fields), key=lambda x: rarity_idx.get(x, 99))
+            page_images.append(page_fields[0].get("image", ""))
+            page_colors.append(RARITIES[best_r]["color"])
+
+        view = InventoryView(
+            pages=pages,
+            total_cards=len(user["collection"]),
+            display_name=ctx.author.display_name,
+            user_id=ctx.author.id,
+            stats_line=stats_line,
+            page_images=page_images,
+            page_colors=page_colors,
+            sorted_chars=sorted_chars,
+        )
         await ctx.send(embed=view._embed(), view=view)
     except Exception as e:
         tb = "".join(traceback.format_exception(type(e), e, e.__traceback__))
@@ -2510,7 +2675,7 @@ async def inventory(ctx: commands.Context):
                 await ctx.send(embed=branded_embed(
                     "\u2705 Auto-Repaired",
                     f"Found and fixed **{len(fixes)} issue(s)** in your data. Try `op inv` again!\n"
-                    + "\n".join(f"• {f}" for f in fixes[:10])
+                    + "\n".join(f"\u2022 {f}" for f in fixes[:10])
                     + ("\n..." if len(fixes) > 10 else ""),
                     color=0x4CAF50,
                 ))
@@ -2523,6 +2688,7 @@ async def inventory(ctx: commands.Context):
             f"```\n{tb[-1800:]}\n```\nTry `op fixmycards` for a deeper scan, or send this to the bot owner.",
             color=0xFF5722,
         ))
+
 
 # -----------------------------------------------------------------------
 # op fixmycards — force-repair a user's data
