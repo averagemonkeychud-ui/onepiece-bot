@@ -1994,6 +1994,7 @@ async def help_command(ctx: commands.Context):
 
 # in-memory spam tracker: user_id -> [timestamp, ...]
 _spam_tracker: dict = {}
+_spin_locks: set = set()
 
 # -----------------------------------------------------------------------
 # op spin
@@ -2046,6 +2047,16 @@ async def spin(ctx: commands.Context):
     spam.append(now)
     _spam_tracker[ctx.author.id] = spam
 
+    uid = ctx.author.id
+    if uid in _spin_locks:
+        await ctx.send(embed=branded_embed(
+            "\u26a0\ufe0f Already Spinning",
+            f"{ctx.author.mention}, you already have a spin in progress! Wait for it to finish.",
+            color=0xFF9800,
+        ))
+        return
+    _spin_locks.add(uid)
+
     data = load_data()
     user = get_user(data, str(ctx.author.id))
 
@@ -2056,6 +2067,7 @@ async def spin(ctx: commands.Context):
             f"or use `op refreshspins` if you've collected Keys.",
             color=0x757575,
         ))
+        _spin_locks.discard(uid)
         return
 
     # check autoroll — skip animation, consume timer & bypass spam
@@ -2168,6 +2180,7 @@ async def spin(ctx: commands.Context):
     if not is_duplicate:
         embed = build_card_embed(inst, ctx, extra)
         await suspense.edit(content=None, embed=embed)
+        _spin_locks.discard(uid)
         return
 
     embed = build_card_embed(inst, ctx, {**extra, "duplicate": True, "payout": duplicate_payout})
@@ -2191,6 +2204,7 @@ async def spin(ctx: commands.Context):
 
     save_data(data)
     await suspense.edit(embed=dup_embed, view=None)
+    _spin_locks.discard(uid)
 
 # -----------------------------------------------------------------------
 # op refreshspins
@@ -2953,6 +2967,10 @@ class ShopView(discord.ui.View):
         return True
 
 async def _process_shop_buy(interaction: discord.Interaction, item_key: str, item: dict):
+    uid = interaction.user.id
+    if uid in _spin_locks:
+        await interaction.response.send_message("\u26a0\ufe0f You're currently spinning! Wait for it to finish before buying.", ephemeral=True)
+        return
     data = load_data()
     user = get_user(data, str(interaction.user.id))
 
@@ -3040,6 +3058,11 @@ async def buy(ctx: commands.Context, item_key: str = None):
 
     item_key = item_key.lower()
     item = SHOP_ITEMS[item_key]
+
+    uid = ctx.author.id
+    if uid in _spin_locks:
+        await ctx.send("\u26a0\ufe0f You're currently spinning! Wait for it to finish before buying.")
+        return
 
     data = load_data()
     user = get_user(data, str(ctx.author.id))
