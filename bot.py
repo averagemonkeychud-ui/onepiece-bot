@@ -2040,6 +2040,7 @@ async def help_command(ctx: commands.Context):
 # in-memory spam tracker: user_id -> [timestamp, ...]
 _spam_tracker: dict = {}
 _spin_locks: set = set()
+_stuck_warnings: dict = {}
 
 # -----------------------------------------------------------------------
 # op spin
@@ -2105,13 +2106,19 @@ async def spin(ctx: commands.Context):
 
     uid = ctx.author.id
     if uid in _spin_locks:
+        if _stuck_warnings.get(uid, 0) >= 1:
+            _stuck_warnings[uid] = 0
+            _spin_locks.discard(uid)
+            await ctx.send(embed=branded_embed(
+                "\u267b\ufe0f Spin Reset",
+                f"{ctx.author.mention}, cleared a stuck spin! Try `op spin` again.",
+                color=0xFF9800,
+            ))
+            return
+        _stuck_warnings[uid] = _stuck_warnings.get(uid, 0) + 1
         _spin_locks.discard(uid)
-        await ctx.send(embed=branded_embed(
-            "\u267b\ufe0f Spin Reset",
-            f"{ctx.author.mention}, cleared a stuck spin! Try `op spin` again.",
-            color=0xFF9800,
-        ))
         return
+    _stuck_warnings[uid] = 0
     _spin_locks.add(uid)
 
     data = load_data()
