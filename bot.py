@@ -994,7 +994,7 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
         if extra.get("luck_active"):
             embed.add_field(name="\U0001f340 2x Luck Active", value="Better odds are in effect!", inline=False)
         if extra.get("hdygt"):
-            embed.add_field(name="\U0001f30c Astronomically Rare", value="**1 in 1,000,000** pull — screenshot this.", inline=False)
+            embed.add_field(name="\U0001f451 GODLY PULL", value="**1 in 1,000,000** \u2014 worth **100,000,000 Beli** \u2014 screenshot this.", inline=False)
         if extra.get("duplicate"):
             embed.add_field(name="\u267b\ufe0f Duplicate", value=f"Keep the card or convert for **{extra.get('payout', 0):,} Beli**?", inline=False)
         if extra.get("keys_found"):
@@ -2324,7 +2324,7 @@ async def spin(ctx: commands.Context):
         "pity": user["pity_counter"],
     }
 
-    # ── HDYGT: Epic godly reveal ──
+    # ── HDYGT: Godly Flex Reveal ──
     if rarity == "HDYGT" and not is_duplicate:
         steps = [
             ("\U0001f30d  The world trembles...", 1.5),
@@ -2340,26 +2340,70 @@ async def spin(ctx: commands.Context):
             await asyncio.sleep(delay)
 
         announcement = discord.Embed(
-            title="\U0001f31f  THE UNIVERSE HAS SPOKEN  \U0001f31f",
+            title="\U0001f451  \u2728  THE UNIVERSE HAS SPOKEN  \u2728  \U0001f451",
             description=(
-                f"{ctx.author.mention}, you have been blessed with a power beyond imagination.\n\n"
-                f"The **1 in 1,000,000** has chosen you."
+                "\u2501" * 36 + "\n"
+                f"\U0001f31f {ctx.author.mention} \U0001f31f\n\n"
+                "You have been blessed by the divine.\n"
+                "The **1 in 1,000,000** has chosen you.\n"
+                "\u2501" * 36
             ),
             color=0xFFD700,
         )
         if character.get("image"):
             announcement.set_image(url=character["image"])
-        announcement.set_footer(text="\u2728  A legendary tale begins...")
+        announcement.set_footer(text="\u2728  A legend is born...")
         try:
             await suspense.edit(content=None, embed=announcement)
         except Exception:
             pass
         await asyncio.sleep(2.5)
 
-        embed = build_card_embed(inst, ctx, extra)
-        embed.color = 0xFFD700
-        embed.title = f"\U0001f451  {name}  \U0001f451"
-        embed.insert_field_at(0, name="\U0001f31f GODLY PULL", value=f"**1 in 1,000,000** \u2014 worth **{RARITIES['HDYGT']['value']:,} Beli**", inline=False)
+        race_data = RACES.get(inst.get("race", "Human"), RACES["Human"])
+        fruit = inst.get("fruit")
+        total = inst.get("power", 0) + inst.get("health", 0) + inst.get("speed", 0)
+        maxes = _STAT_MAX.get("HDYGT", _STAT_MAX["C"])
+        bar = lambda v, m: _stat_bar(v, m)
+
+        card_desc = (
+            f"\u2501" * 36 + "\n"
+            f"\U0001f451  **{name}**  \U0001f451\n"
+            f"\u2753  HDYGT  \u2014  1 in 1,000,000\n"
+            f"\u2501" * 36 + "\n\n"
+            f"{race_data['emoji']}  {inst['race']}"
+        )
+        if fruit:
+            fru = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
+            card_desc += f"   \u2502   {fru.get('emoji', '')}  {fruit['name']}\n`{fruit.get('type', '')}`"
+        else:
+            card_desc += "\n`No Devil Fruit`"
+        card_desc += "\n\n"
+        card_desc += (
+            f"\u2694  **Power**  `{inst['power']:>5,}`  {bar(inst['power'], maxes['power'])}\n"
+            f"\u2764  **Health** `{inst['health']:>5,}`  {bar(inst['health'], maxes['health'])}\n"
+            f"\U0001f4a8  **Speed**  `{inst['speed']:>5,}`  {bar(inst['speed'], maxes['speed'])}\n"
+            f"\u2501" * 36 + "\n"
+            f"\U0001f4ca  **TOTAL**  `{total:>6,}`  {bar(total, sum(maxes.values()))}\n\n"
+            f"*{race_data['emoji']} {inst['race']}: {race_data['desc']}*"
+        )
+        if fruit:
+            scale = RARITY_FRUIT_SCALE.get("HDYGT", 1.5)
+            fr = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
+            card_desc += f"\n*{fr.get('emoji', '')} Fruit effect scaled x{scale:.2f} by HDYGT tier*"
+        card_desc += f"\n\u2501" * 36
+
+        embed = discord.Embed(
+            title="\U0001f451  \u2728  GODLY PULL  \u2728  \U0001f451",
+            description=card_desc,
+            color=0xFFFFFF,
+        )
+        embed.set_author(name="\u2753  HDYGT  \u2014  1 in 1,000,000")
+        if character.get("image"):
+            embed.set_image(url=character["image"])
+        embed.add_field(name="\U0001f4b0  VALUE", value=f"**{RARITIES['HDYGT']['value']:,} Beli**", inline=True)
+        embed.add_field(name="\U0001f3c6  TIER", value="**HDYGT** \u2014 Impossible", inline=True)
+        embed.add_field(name="\U0001f4dc  CLAIM", value="Screenshot this. You earned it.", inline=True)
+        embed.set_footer(text=f"{ctx.author.display_name}  \u2728  THE GODS HAVE SPOKEN  \u2728  Spins {user['spins']}/{MAX_SPINS}")
         await ctx.send(embed=embed)
         _spin_locks.discard(uid)
         return
