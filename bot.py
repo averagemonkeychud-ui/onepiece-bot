@@ -2029,9 +2029,10 @@ async def spin(ctx: commands.Context):
 
     uid = ctx.author.id
     if uid in _spin_locks:
+        _spin_locks.discard(uid)
         await ctx.send(embed=branded_embed(
-            "\u26a0\ufe0f Already Spinning",
-            f"{ctx.author.mention}, you already have a spin in progress! Wait for it to finish.",
+            "\u267b\ufe0f Spin Reset",
+            f"{ctx.author.mention}, cleared a stuck spin! Try `op spin` again.",
             color=0xFF9800,
         ))
         return
@@ -2068,6 +2069,20 @@ async def spin(ctx: commands.Context):
         user["fast_spins"] = fast - 1
         suspense = await ctx.send("\U0001f3b2 Fast spin...")
         await asyncio.sleep(0.3)
+    else:
+        suspense = await ctx.send("\U0001f3b2 Spinning...")
+        delays = [0.1, 0.12, 0.13, 0.15]
+        for d in delays:
+            c = random.choice(CHARACTERS)
+            ri = RARITIES[c["rarity"]]
+            try:
+                await suspense.edit(embed=discord.Embed(
+                    title=f"{ri['emoji']}  {c['name']}",
+                    color=ri["color"],
+                ))
+            except Exception:
+                pass
+            await asyncio.sleep(d)
 
     now_ts = datetime.utcnow().timestamp()
     luck_active = now_ts < user.get("luck_until_utc", 0)
