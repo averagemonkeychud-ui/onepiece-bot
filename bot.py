@@ -1,11 +1,12 @@
 import asyncio
+import copy
 import itertools
 import json
 import os
 import random
 import time
 import traceback
-from datetime import datetime, timedelta, time as dtime
+from datetime import datetime, timedelta
 
 import discord
 from discord.ext import commands, tasks
@@ -855,8 +856,8 @@ def bump_quest_progress(user: dict, qtype: str, value=None) -> None:
     for entry in user["quests"]:
         if entry["claimed"]:
             continue
-        template = next(q for q in QUEST_POOL if q["id"] == entry["id"])
-        if template["type"] != qtype:
+        template = next((q for q in QUEST_POOL if q["id"] == entry["id"]), None)
+        if template is None or template["type"] != qtype:
             continue
         if qtype == "rarity_at_least":
             if rarity_at_least(value, template["target"]):
@@ -884,7 +885,7 @@ def branded_embed(title: str, description: str = "", color: int = BRAND_COLOR) -
     return embed
 
 def instance_total_stat(inst: dict) -> int:
-    return inst["power"] + inst["health"] + inst["speed"]
+    return inst.get("power", 0) + inst.get("health", 0) + inst.get("speed", 0)
 
 def instance_payout(inst: dict, rarity: str = None) -> int:
     if rarity is None:
@@ -892,7 +893,7 @@ def instance_payout(inst: dict, rarity: str = None) -> int:
     base = RARITIES[rarity]["value"]
     race = RACES.get(inst.get("race", "Human"), RACES["Human"]).get("value", 1.0)
     fruit = inst.get("fruit")
-    fruit_val = FRUIT_RARITIES.get(fruit["rarity"], {}).get("value", 0.75) if fruit else 0.75
+    fruit_val = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {}).get("value", 0.75) if fruit else 0.75
     return round(base * DUPLICATE_CONVERT_RATE * race * fruit_val)
 
 # ── Max stat reference per rarity for stat bars ──
@@ -981,7 +982,8 @@ def build_card_embed(inst: dict, ctx_or_author, extra: dict = None) -> discord.E
     card += f"\n\n*{race_data['emoji']} {inst['race']}: {race_data['desc']}*"
     if fruit:
         scale = RARITY_FRUIT_SCALE[rarity]
-        card += f"\n*{FRUIT_RARITIES[fruit['rarity']]['emoji']} Fruit effect scaled x{scale:.2f} by {rarity} tier*"
+        fr = FRUIT_RARITIES.get(fruit.get("rarity", "Common"), {})
+        card += f"\n*{fr.get('emoji', '')} Fruit effect scaled x{scale:.2f} by {rarity} tier*"
 
     embed.description = card
 
@@ -1120,7 +1122,15 @@ class TeamPickerView(discord.ui.View):
             ))
         if opts:
             s = discord.ui.Select(placeholder="Pick your fighter...", options=opts, row=0)
-            s.callback = self._on_challenger_pick
+            async def _chall_cb(i: discord.Interaction):
+                if i.user.id != self.state.ctx.author.id:
+                    await i.response.send_message("Not your pick!", ephemeral=True)
+                    return
+                self.challenger_pick = int(s.values[0])
+                s.disabled = True
+                await i.response.defer()
+                self._check_done()
+            s.callback = _chall_cb
             self.add_item(s)
 
         if not is_bot:
@@ -1137,26 +1147,16 @@ class TeamPickerView(discord.ui.View):
                 ))
             if opts2:
                 s2 = discord.ui.Select(placeholder="Pick your fighter...", options=opts2, row=1)
-                s2.callback = self._on_opponent_pick
+                async def _opp_cb(i: discord.Interaction):
+                    if not self.is_bot and i.user.id != self.state.opponent.id:
+                        await i.response.send_message("Not your pick!", ephemeral=True)
+                        return
+                    self.opponent_pick = int(s2.values[0])
+                    s2.disabled = True
+                    await i.response.defer()
+                    self._check_done()
+                s2.callback = _opp_cb
                 self.add_item(s2)
-
-    async def _on_challenger_pick(self, interaction: discord.Interaction, select: discord.ui.Select):
-        if interaction.user.id != self.state.ctx.author.id:
-            await interaction.response.send_message("Not your pick!", ephemeral=True)
-            return
-        self.challenger_pick = int(select.values[0])
-        select.disabled = True
-        await interaction.response.defer()
-        self._check_done()
-
-    async def _on_opponent_pick(self, interaction: discord.Interaction, select: discord.ui.Select):
-        if not self.is_bot and interaction.user.id != self.state.opponent.id:
-            await interaction.response.send_message("Not your pick!", ephemeral=True)
-            return
-        self.opponent_pick = int(select.values[0])
-        select.disabled = True
-        await interaction.response.defer()
-        self._check_done()
 
     def _check_done(self):
         if self.challenger_pick is not None and (self.is_bot or self.opponent_pick is not None):
@@ -1602,10 +1602,6 @@ class PromoCreateView(discord.ui.View):
             scope_view = discord.ui.View(timeout=60)
             scope_view.add_item(scope_select)
             await sel_interaction.response.edit_original_response(content="Pick who can use this code:", view=scope_view)
-        select.callback = rt_callback
-        view = discord.ui.View(timeout=60)
-        view.add_item(select)
-        await interaction.response.send_message("Pick what the code gives:", view=view, ephemeral=True)
         select.callback = rt_callback
         view = discord.ui.View(timeout=60)
         view.add_item(select)
@@ -2174,10 +2170,8 @@ class DuplicateChoiceView(discord.ui.View):
 @bot.command(name="spin", aliases=["roll"])
 async def spin(ctx: commands.Context):
     """Spin for a random One Piece character. Costs 1 spin."""
+    now = time.time()
     now_ts = datetime.utcnow().timestamp()
-    now = time.time()
-
-    now = time.time()
 
     # anti-spam: 10s cooldown after 6+ spins in a 2s window
     cooldown_until = _spam_cooldown.get(ctx.author.id, 0)
@@ -2542,7 +2536,36 @@ class InventoryView(discord.ui.View):
                 placeholder="\U0001f50d Jump to a character...",
                 options=options[:25], row=0,
             )
-            self.char_select.callback = self._on_char_select
+            select = self.char_select
+            async def _char_cb(i: discord.Interaction):
+                char_name = select.values[0]
+                instances = []
+                for name, insts in self.sorted_chars:
+                    if name == char_name:
+                        instances = insts
+                        break
+                inv_kwargs = {
+                    "pages": self.pages,
+                    "total_cards": self.total_cards,
+                    "display_name": self.display_name,
+                    "user_id": self.user_id,
+                    "stats_line": self.stats_line,
+                    "page_images": self.page_images,
+                    "page_colors": self.page_colors,
+                    "sorted_chars": self.sorted_chars,
+                }
+                detail_view = CharacterDetailView(
+                    char_name=char_name,
+                    instances=instances,
+                    display_name=self.display_name,
+                    user_id=self.user_id,
+                    inv_kwargs=inv_kwargs,
+                )
+                await i.response.edit_message(
+                    embed=detail_view._embed(),
+                    view=detail_view,
+                )
+            self.char_select.callback = _char_cb
             self.add_item(self.char_select)
 
         self._update_buttons()
@@ -2572,32 +2595,6 @@ class InventoryView(discord.ui.View):
             await interaction.response.send_message("Not your inventory!", ephemeral=True)
             return False
         return True
-
-    async def _on_char_select(self, interaction: discord.Interaction, select: discord.ui.Select):
-        char_name = select.values[0]
-        instances = []
-        for name, insts in self.sorted_chars:
-            if name == char_name:
-                instances = insts
-                break
-        inv_kwargs = {
-            "pages": self.pages,
-            "total_cards": self.total_cards,
-            "display_name": self.display_name,
-            "user_id": self.user_id,
-            "stats_line": self.stats_line,
-            "page_images": self.page_images,
-            "page_colors": self.page_colors,
-            "sorted_chars": self.sorted_chars,
-        }
-        detail_view = CharacterDetailView(
-            char_name=char_name,
-            instances=instances,
-            display_name=self.display_name,
-            user_id=self.user_id,
-            inv_kwargs=inv_kwargs,
-        )
-        await interaction.response.edit_message(embed=detail_view._embed(), view=detail_view)
 
     @discord.ui.button(label="\u25c0  Page", style=discord.ButtonStyle.primary, row=1)
     async def prev_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -2702,6 +2699,8 @@ async def inventory(ctx: commands.Context):
         # Build per-page thumbnail and color arrays
         rarity_idx = {r: i for i, r in enumerate(RARITY_ORDER)}
         for page_fields in pages:
+            if not page_fields:
+                continue
             best_r = min((pf["rarity"] for pf in page_fields), key=lambda x: rarity_idx.get(x, 99))
             page_images.append(page_fields[0].get("image", ""))
             page_colors.append(RARITIES[best_r]["color"])
@@ -2900,17 +2899,14 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
         target = matches[0]
     else:
         view = InstanceSelectView(ctx.author.id, matches)
-        if len(view.options or []) == 0 and view.selected is None:
-            msg = await ctx.send("\u26a0\ufe0f You have multiple cards of this character. Select which one to sell:", view=view)
-            await view.wait()
-            target = view.selected
-            try:
-                await msg.delete()
-            except Exception:
-                pass
-        elif view.selected:
-            target = view.selected
-        else:
+        msg = await ctx.send("\u26a0\ufe0f You have multiple cards of this character. Select which one to sell:", view=view)
+        await view.wait()
+        try:
+            await msg.delete()
+        except Exception:
+            pass
+        target = view.selected
+        if not target:
             return
 
     if not target:
@@ -2928,7 +2924,7 @@ async def sell(ctx: commands.Context, *, character_name: str = None):
 
     race_data = RACES.get(target.get("race", "Human"), RACES["Human"])
     fruit_name = target.get("fruit", {}).get("name", "") if target.get("fruit") else ""
-    fruit_label = f" + {target['fruit']['rarity']} Fruit" if fruit_name else " (No Fruit)"
+    fruit_label = f" + {target.get('fruit', {}).get('rarity', 'Common')} Fruit" if fruit_name else " (No Fruit)"
     race_label = f"x{race_data['value']:.2f}" if race_data['value'] != 1.0 else ""
     await ctx.send(embed=branded_embed(
         "\U0001f4b0 Sold!",
@@ -3056,8 +3052,6 @@ async def duel(ctx: commands.Context, opponent: discord.Member, wager: int = 0):
 
 async def _run_battle(state: DuelState):
     # Auto-battle between two selected characters until one dies.
-    import copy
-
     p1 = copy.deepcopy(state.challenger_char)
     p2 = copy.deepcopy(state.opponent_char)
     p1["current_hp"] = p1["health"]
@@ -3169,6 +3163,7 @@ async def _finish_duel(state: DuelState):
 
 @duel.error
 async def duel_error(ctx: commands.Context, error: commands.CommandError):
+    active_duels.pop(ctx.channel.id, None)
     if isinstance(error, commands.MemberNotFound):
         await ctx.send("\u26a0\ufe0f Usage: `op duel @user [wager]`")
     elif isinstance(error, commands.BadArgument):
@@ -3305,7 +3300,9 @@ async def quests(ctx: commands.Context):
 
     embed = branded_embed(f"\U0001f4dc {ctx.author.display_name}'s Daily Quests", color=0x795548)
     for entry in user["quests"]:
-        template = next(q for q in QUEST_POOL if q["id"] == entry["id"])
+        template = next((q for q in QUEST_POOL if q["id"] == entry["id"]), None)
+        if template is None:
+            continue
         target_value = quest_target_value(template)
         if entry["claimed"]:
             status = "\u2705 Claimed"
@@ -3341,7 +3338,10 @@ async def claim(ctx: commands.Context, quest_id: str = None):
         await ctx.send("\u26a0\ufe0f You already claimed that one today.")
         return
 
-    template = next(q for q in QUEST_POOL if q["id"] == entry["id"])
+    template = next((q for q in QUEST_POOL if q["id"] == entry["id"]), None)
+    if template is None:
+        await ctx.send("\u26a0\ufe0f That quest is no longer available.")
+        return
     target_value = quest_target_value(template)
     if entry["progress"] < target_value:
         detail = "Not finished yet." if template["type"] == "rarity_at_least" else f"Not finished yet: {entry['progress']}/{target_value}."
