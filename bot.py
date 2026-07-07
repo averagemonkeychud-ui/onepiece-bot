@@ -2079,7 +2079,7 @@ async def spin(ctx: commands.Context):
     else:
         suspense = await ctx.send("\U0001f3b2 Spinning...")
         # gacha slot-machine: 1 card at a time, fast → slow
-        delays = [0.03, 0.05, 0.1, 0.2, 0.35, 0.6, 0.82]
+        delays = [0.03, 0.05, 0.1, 0.2, 0.4, 0.72]
         for d in delays:
             c = random.choice(CHARACTERS)
             ri = RARITIES[c["rarity"]]
